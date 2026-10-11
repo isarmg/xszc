@@ -1,13 +1,7 @@
 package org.sarmg.xszc
 
 import android.content.Context
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import android.graphics.Bitmap
-import android.os.Build
 import androidx.compose.foundation.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
@@ -113,7 +107,6 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
     var selected by remember(profile) { mutableStateOf<Int?>(null) }
     var duplicateGroups by remember(profile) { mutableStateOf<org.json.JSONArray?>(null) }
     var downloadNotice by remember(profile) { mutableStateOf("") }
-    var pendingDownload by remember(profile) { mutableStateOf<List<RemoteAsset>?>(null) }
     val hasFilters = favorites || albumId != null || filters != CloudFilters()
     val monthFormat = remember(Locale.getDefault(), ZoneId.systemDefault()) { SimpleDateFormat("yyyy年M月", Locale.getDefault()) }
     fun monthLabel(asset: RemoteAsset) = monthFormat.format(Date(asset.createdAtMs))
@@ -176,16 +169,8 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
     }
     fun download(values: List<RemoteAsset>) {
         if (values.isEmpty()) return
-        if (Build.VERSION.SDK_INT < 29 && ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            pendingDownload = values
-        } else enqueue(values)
+        enqueue(values)
     }
-    val savePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        val pending = pendingDownload; pendingDownload = null
-        if (granted && pending != null) enqueue(pending)
-        else notice = "保存到手机需要写入照片的权限"
-    }
-    LaunchedEffect(pendingDownload) { if (pendingDownload != null) savePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }
     LaunchedEffect(source, profile) {
         seen.clear(); loadPage(true)
         try { albums = source.albums(); devices = source.devices() }

@@ -7,7 +7,6 @@ import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import androidx.compose.ui.semantics.getOrNull
@@ -33,10 +32,8 @@ class GalleryNavigationInstrumentedTest {
         override fun before() {
             val instrumentation = InstrumentationRegistry.getInstrumentation()
             val target = instrumentation.targetContext
-            if (Build.VERSION.SDK_INT >= 33) {
-                instrumentation.uiAutomation.grantRuntimePermission(target.packageName, Manifest.permission.READ_MEDIA_IMAGES)
-                instrumentation.uiAutomation.grantRuntimePermission(target.packageName, Manifest.permission.READ_MEDIA_VIDEO)
-            } else instrumentation.uiAutomation.grantRuntimePermission(target.packageName, Manifest.permission.READ_EXTERNAL_STORAGE)
+            instrumentation.uiAutomation.grantRuntimePermission(target.packageName, Manifest.permission.READ_MEDIA_IMAGES)
+            instrumentation.uiAutomation.grantRuntimePermission(target.packageName, Manifest.permission.READ_MEDIA_VIDEO)
             target.getSharedPreferences("gallery_ui", Context.MODE_PRIVATE)
                 .edit().putInt("columns", 3).commit()
         }

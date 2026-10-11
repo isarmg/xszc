@@ -4,11 +4,11 @@
 
 ## Android
 
-[Android 安装与构建](platforms/android.md)：Android 8.0/API 26+、arm64-v8a，使用正式签名 APK。
+[Android 安装与构建](platforms/android.md)：Android 17/API 37+、arm64-v8a，使用正式签名 APK。
 
 ## iOS
 
-[iOS 安装与构建](platforms/ios.md)：iOS 26.0+，发行 IPA 未签名，安装到真实设备前需要有效 Apple 签名与 provisioning。
+[iOS 安装与构建](platforms/ios.md)：iOS 27.0+，发行 IPA 未签名，安装到真实设备前需要有效 Apple 签名与 provisioning。
 
 ### 从源码安装到设备
 

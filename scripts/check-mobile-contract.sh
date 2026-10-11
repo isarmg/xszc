@@ -64,16 +64,26 @@ fi
 
 for workflow in .github/workflows/build.yml .github/workflows/release.yml; do
     grep -q -F 'bash scripts/verify-ios-toolchain.sh' "$workflow" \
-        || fail "$workflow must verify Xcode 26 and iOS 26 SDKs"
+        || fail "$workflow must verify stable Xcode 27 and iOS 27 SDKs"
     grep -q -F 'python3 scripts/package-ios-ipa.py' "$workflow" \
         || fail "$workflow must package the device app as an IPA"
     grep -q -F 'path: dist/*.ipa' "$workflow" \
         || fail "$workflow must upload the IPA artifact"
+    grep -q -F 'runs-on: xcode-27' "$workflow" \
+        || fail "$workflow must use the reviewed Xcode 27 image"
+    grep -q -F 'DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer' "$workflow" \
+        || fail "$workflow must select the stable Xcode 27 application"
+    grep -q -F 'sdkmanager "platforms;android-37.0" "build-tools;37.0.0"' "$workflow" \
+        || fail "$workflow must install the stable Android 37 SDK and build tools"
 done
-grep -q -F 'iOS: "26.0"' clients/ios/project.yml \
-    || fail "the iOS application and tests must require iOS 26.0"
-grep -q -F 'export IPHONEOS_DEPLOYMENT_TARGET=26.0' scripts/build-ios-rust.sh \
-    || fail "the Rust iOS slices must require iOS 26.0"
+for android_setting in 'compileSdk = 37' 'minSdk = 37' 'targetSdk = 37' 'buildToolsVersion = "37.0.0"'; do
+    grep -q -F "$android_setting" clients/android/app/build.gradle.kts \
+        || fail "the Android application must use the current stable API: $android_setting"
+done
+grep -q -F 'iOS: "27.0"' clients/ios/project.yml \
+    || fail "the iOS application and tests must require iOS 27.0"
+grep -q -F 'export IPHONEOS_DEPLOYMENT_TARGET=27.0' scripts/build-ios-rust.sh \
+    || fail "the Rust iOS slices must require iOS 27.0"
 if grep -q -F 'unsigned.tar.gz' .github/workflows/release.yml; then
     fail "iOS releases must publish IPA files rather than app tarballs"
 fi

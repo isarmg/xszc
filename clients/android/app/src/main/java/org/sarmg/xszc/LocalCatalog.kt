@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.ContentUris
 import android.content.pm.PackageManager
-import android.os.Build
 import android.provider.MediaStore
 import android.database.Cursor
 import androidx.core.content.ContextCompat
@@ -15,16 +14,14 @@ import java.util.UUID
 internal object LocalCatalog {
     const val PAGE_SIZE = 150
     data class Page(val rows: List<JSONObject>, val hasMore: Boolean)
-    fun permissions() = if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-        else if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
-        else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    fun permissions() = arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
+        Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
     fun hasAccess(context: Context): Boolean = permissions().any {
         ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
-    fun hasFullAccess(context: Context): Boolean = if (Build.VERSION.SDK_INT >= 33) {
+    fun hasFullAccess(context: Context): Boolean =
         listOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
             .all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
-    } else hasAccess(context)
     data class Scan(val albums: Map<String, String>, val sources: Set<String>, val changes: Set<String>? = null)
     fun scan(context: Context, h: Long): Scan {
         check(permissions().any { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }) {
@@ -34,9 +31,9 @@ internal object LocalCatalog {
         val albums = mutableMapOf<String, String>()
         val sources = mutableSetOf<String>()
         for ((collection, kind) in listOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI to "photo", MediaStore.Video.Media.EXTERNAL_CONTENT_URI to "video")) {
-            val permission = if (Build.VERSION.SDK_INT >= 33) { if (kind == "photo") Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_MEDIA_VIDEO } else Manifest.permission.READ_EXTERNAL_STORAGE
+            val permission = if (kind == "photo") Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_MEDIA_VIDEO
             if (ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED &&
-                !(Build.VERSION.SDK_INT >= 34 && ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED)) continue
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) != PackageManager.PERMISSION_GRANTED) continue
             val columns = arrayOf("_id", "_display_name", "_size", "date_modified", "date_added", "datetaken", "bucket_id", "bucket_display_name")
             val cursor = context.contentResolver.query(collection, columns, null, null, null)
                 ?: error("无法读取系统媒体库，请稍后重试")
@@ -63,7 +60,6 @@ internal object LocalCatalog {
         return JSONObject().put("source_id", source).put("name", name).put("media_kind", kind).put("album_id", c.getString(6) ?: "")
             .put("created_ms", created).put("modified_ms", modified).put("size", c.getLong(2).coerceAtLeast(0)).put("descriptor", descriptor.toString())
     }
-    @androidx.annotation.RequiresApi(30)
     private fun incremental(context: Context, h: Long, since: Long): Scan {
         val previous = index(h, null, null, false).map { it.getString("source_id") }.toSet()
         val sources = mutableSetOf<String>()
@@ -137,13 +133,13 @@ internal object LocalCatalog {
             ?: return emptyMap()
         return runCatching { val json = JSONObject(raw); json.keys().asSequence().associateWith(json::getString) }.getOrDefault(emptyMap())
     }
-    /** A MediaStore version reset, permission change or old Android needs reconciliation. */
+    /** A MediaStore version reset or permission change needs reconciliation. */
     fun refresh(context: Context, h: Long, profile: String): Scan? {
         val preferences = context.getSharedPreferences("local_catalog_sync", Context.MODE_PRIVATE)
         val permissionKey = permissions().joinToString { ContextCompat.checkSelfPermission(context, it).toString() }
-        val versions = if (Build.VERSION.SDK_INT >= 30) MediaStore.getExternalVolumeNames(context).sorted().associateWith {
+        val versions = MediaStore.getExternalVolumeNames(context).sorted().associateWith {
             MediaStore.getVersion(context, it) to MediaStore.getGeneration(context, it)
-        } else emptyMap()
+        }
         val signature = JSONObject().put("permissions", permissionKey).put("volumes", JSONObject().apply {
             versions.forEach { (volume, value) -> put(volume, JSONObject().put("version", value.first).put("generation", value.second)) }
         }).toString()
@@ -156,7 +152,7 @@ internal object LocalCatalog {
         val canIncrement = fullAccess && versions.isNotEmpty() && old?.optString("permissions") == permissionKey &&
             oldVolumes != null && oldVolumes.keys().asSequence().toSet() == versions.keys &&
             versions.all { (volume, value) -> oldVolumes.optJSONObject(volume)?.optString("version") == value.first }
-        val result = if (Build.VERSION.SDK_INT >= 30 && canIncrement) {
+        val result = if (canIncrement) {
             val since = versions.keys.minOf { oldVolumes!!.getJSONObject(it).getLong("generation") }
             incremental(context, h, since)
         } else scan(context, h)

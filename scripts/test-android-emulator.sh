@@ -3,7 +3,7 @@ set -euo pipefail
 
 # A fresh, dedicated CI AVD; never targets a connected physical device.
 sdk_root="${ANDROID_HOME:?Android SDK required}"
-avd_name="xszc-api36-${GITHUB_RUN_ID:?CI run ID required}-${GITHUB_RUN_ATTEMPT:-1}"
+avd_name="xszc-api37-${GITHUB_RUN_ID:?CI run ID required}-${GITHUB_RUN_ATTEMPT:-1}"
 # New SDK tools and emulator releases can choose different default AVD homes.
 # Pin both to this run's isolated directory; do not repurpose the user's HOME.
 avd_storage="$(mktemp -d "${RUNNER_TEMP:?}/xszc-avd.XXXXXX")"
@@ -32,7 +32,7 @@ cleanup() {
 }
 trap cleanup EXIT
 test -r /dev/kvm && test -w /dev/kvm
-printf 'no\n' | avdmanager create avd -n "$avd_name" -k 'system-images;android-36;google_apis;x86_64'
+printf 'no\n' | avdmanager create avd -n "$avd_name" -k 'system-images;android-37.0;google_apis;x86_64'
 test -f "$ANDROID_AVD_HOME/$avd_name.ini"
 "$sdk_root/emulator/emulator" -list-avds | grep -Fx "$avd_name"
 "$sdk_root/emulator/emulator" -avd "$avd_name" -port 5554 -no-window -no-audio \
@@ -53,5 +53,5 @@ if [[ "$booted" != true ]]; then
   echo 'Android emulator did not finish booting within six minutes.' >&2
   exit 1
 fi
-test "$(timeout --kill-after=2s 10s "$sdk_root/platform-tools/adb" -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')" = 36
+test "$(timeout --kill-after=2s 10s "$sdk_root/platform-tools/adb" -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')" = 37
 ANDROID_SERIAL="$serial" timeout --kill-after=30s 10m gradle -p clients/android -PxszcEmulatorTests=true connectedDebugAndroidTest

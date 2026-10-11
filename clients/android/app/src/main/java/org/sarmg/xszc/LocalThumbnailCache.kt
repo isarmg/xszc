@@ -6,7 +6,6 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.os.Build
 import android.os.CancellationSignal
 import android.util.LruCache
 import android.util.Size
@@ -70,7 +69,7 @@ internal object LocalThumbnailCache {
                     if (!continuation.isActive) return@execute
                     val result = runCatching {
                         val uri = Uri.parse(id)
-                        if (Build.VERSION.SDK_INT >= 29 && !preview) context.contentResolver.loadThumbnail(uri, Size(size, size), signal)
+                        if (!preview) context.contentResolver.loadThumbnail(uri, Size(size, size), signal)
                         else if (kind == "video") {
                             val retriever = MediaMetadataRetriever()
                             try {

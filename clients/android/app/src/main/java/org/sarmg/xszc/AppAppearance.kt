@@ -34,7 +34,7 @@ internal object AppShapes {
     val notification = IosLikeCornerShape(CornerSize(32.dp))
     val photo = IosLikeCornerShape(CornerSize(25))
     val compact = IosLikeCornerShape(CornerSize(10.dp))
-    val sheet = group.copy(bottomEnd = CornerSize(0.dp), bottomStart = CornerSize(0.dp))
+    val sheet = group
 }
 
 @Composable

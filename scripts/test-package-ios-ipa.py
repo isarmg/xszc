@@ -29,8 +29,8 @@ class PackageTests(unittest.TestCase):
             "CFBundleShortVersionString": "0.4.1",
             "CFBundleSupportedPlatforms": ["iPhoneOS"],
             "CFBundleExecutable": "Xszc",
-            "MinimumOSVersion": "26.0",
-            "DTSDKName": "iphoneos26.0",
+            "MinimumOSVersion": "27.0",
+            "DTSDKName": "iphoneos27.0",
         }
         self.write_info()
         (self.app / "Xszc").write_bytes(b"device executable fixture")
@@ -68,10 +68,11 @@ class PackageTests(unittest.TestCase):
 
     def test_wrong_or_missing_deployment_target_and_sdk_are_rejected(self):
         for field, value in [("MinimumOSVersion", "17.0"),
-                             ("MinimumOSVersion", "27.0"),
+                             ("MinimumOSVersion", "26.0"),
                              ("MinimumOSVersion", None),
                              ("DTSDKName", "iphoneos25.0"),
-                             ("DTSDKName", "iphonesimulator26.0"),
+                             ("DTSDKName", "iphonesimulator27.0"),
+                             ("DTSDKName", "iphoneos27.1"),
                              ("DTSDKName", None)]:
             with self.subTest(field=field, value=value):
                 original = self.info.pop(field)

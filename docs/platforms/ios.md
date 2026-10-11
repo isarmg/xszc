@@ -1,6 +1,6 @@
 # iOS：安装、构建与排障
 
-当前版本 **1.1.0**。适用于 iOS 26.0 及以上的设备。源码构建在 Mac 上完成；macOS 是开发环境，xszc 没有 macOS 桌面应用。
+当前源码版本 **1.1.1**，仅支持最新稳定系统系列 iOS 27.0 及以上的设备。源码构建在 Mac 上完成；macOS 是开发环境，xszc 没有 macOS 桌面应用。下文 v1.1.0 下载链接保留历史发行包信息，该包早于当前源码的系统支持策略。
 
 安装后按[第一次备份](../getting-started.md)登录和验证。两端共享的备份设置、任务操作和数据维护分别见[配置](../configuration.md)、[日常使用](../usage.md)及[维护应用数据](../operations.md)。
 
@@ -18,7 +18,7 @@ shasum -a 256 ./xszc-ios-1.1.0-unsigned.ipa
 
 ### 从源码安装到设备
 
-在有 Xcode 26、iOS 26 SDK、XcodeGen `2.46.0` 和 Rust `1.99.0` 的 Mac 上，按[本页构建步骤](#从源码构建)生成工程。选择 `Xszc` target 的 Signing & Capabilities，设置自己的 Team，连接并信任设备，按提示启用 Developer Mode 后运行。
+在有稳定版 Xcode 27.0、iOS 27.0 SDK、XcodeGen `2.46.0` 和 Rust `1.99.0` 的 Mac 上，按[本页构建步骤](#从源码构建)生成工程。选择 `Xszc` target 的 Signing & Capabilities，设置自己的 Team，连接并信任设备，按提示启用 Developer Mode 后运行。
 
 配对会保存 Keychain 凭据。设备及模拟器测试均保留适用的签名和 entitlement；禁用签名可能导致 `-34018`，此时先修复签名，再处理登录。
 
@@ -32,7 +32,7 @@ shasum -a 256 ./xszc-ios-1.1.0-unsigned.ipa
 
 准备 Rust `1.99.0`，先在仓库根目录运行[公共检查](../development.md#rust-和公共检查)，再执行以下命令。
 
-在 Mac 上准备 Xcode 26、iOS 26 SDK、iOS 26 模拟器运行时和 XcodeGen `2.46.0`：
+在 Mac 上准备稳定版 Xcode 27.0、iOS 27.0 SDK、iOS 27.0 模拟器运行时和 XcodeGen `2.46.0`。CI 使用官方 `xcode-27` 镜像，明确选择 `/Applications/Xcode_27.app/Contents/Developer`，排除镜像中同时安装的 beta Xcode：
 
 ```sh
 ./scripts/verify-ios-toolchain.sh
@@ -42,10 +42,10 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 xcrun simctl list devices available
 ```
 
-脚本生成实机和模拟器 Rust 库及 `XszcRust.xcframework`。从列表选择已安装 iOS 26 的模拟器 UUID，将占位值替换后运行：
+脚本生成实机和模拟器 Rust 库及 `XszcRust.xcframework`。从列表选择已安装 iOS 27.0 的模拟器 UUID，将占位值替换后运行：
 
 ```sh
-simulator_udid="REPLACE_WITH_AVAILABLE_IOS26_SIMULATOR_UUID"
+simulator_udid="REPLACE_WITH_AVAILABLE_IOS27_SIMULATOR_UUID"
 xcodebuild -project clients/ios/Xszc.xcodeproj -scheme Xszc   -sdk iphonesimulator -destination "platform=iOS Simulator,id=$simulator_udid" test
 ```
 

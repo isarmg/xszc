@@ -3,7 +3,6 @@ package org.sarmg.xszc
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
-import android.os.Build
 import android.provider.MediaStore
 import org.json.JSONObject
 import java.io.File
@@ -100,11 +99,9 @@ object RemoteLibrary {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, resource.filename)
                 put(MediaStore.MediaColumns.MIME_TYPE, resource.mimeType)
-                if (Build.VERSION.SDK_INT >= 29) {
-                    put(MediaStore.MediaColumns.RELATIVE_PATH,
-                        if (resource.mimeType.startsWith("video/")) "Movies/Xszc Restored" else "Pictures/Xszc Restored")
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
+                put(MediaStore.MediaColumns.RELATIVE_PATH,
+                    if (resource.mimeType.startsWith("video/")) "Movies/Xszc Restored" else "Pictures/Xszc Restored")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             checkCurrent()
             val uri = context.contentResolver.insert(collection, values) ?: error("无法创建恢复文件")
@@ -123,11 +120,9 @@ object RemoteLibrary {
                 check(copied == resource.contentSize) { "写入手机的文件长度不匹配" }
             } ?: error("无法打开恢复文件")
             checkCurrent()
-            if (Build.VERSION.SDK_INT >= 29) {
-                check(context.contentResolver.update(uri,
-                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null) == 1) {
-                    "无法完成恢复文件"
-                }
+            check(context.contentResolver.update(uri,
+                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null) == 1) {
+                "无法完成恢复文件"
             }
             destination = null
             DownloadTransfers.update(transfer, bytes = resource.contentSize, phase = "已保存到手机")

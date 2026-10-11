@@ -1,6 +1,6 @@
 # Android：安装、构建与排障
 
-当前版本 **1.1.0**。适用于 Android 8.0/API 26 及以上的 arm64-v8a 设备。Windows、Linux 和 macOS 在本页仅作为 Android 开发机，xszc 没有对应的桌面应用。
+当前源码版本 **1.1.1**，仅支持最新稳定系统系列 Android 17/API 37 及以上的 arm64-v8a 设备。Windows、Linux 和 macOS 在本页仅作为 Android 开发机，xszc 没有对应的桌面应用。下文 v1.1.0 下载链接保留历史发行包信息，该包早于当前源码的系统支持策略。
 
 安装后按[第一次备份](../getting-started.md)登录和验证。两端共享的备份设置、任务操作和数据维护分别见[配置](../configuration.md)、[日常使用](../usage.md)及[维护应用数据](../operations.md)。
 
@@ -42,7 +42,7 @@ adb shell pm path org.sarmg.xszc
 
 准备 Rust `1.99.0`，先在仓库根目录运行[公共检查](../development.md#rust-和公共检查)，再执行以下命令。
 
-准备 JDK 17、Gradle `9.5.0`、Android SDK 36、Build Tools `36.0.0`、NDK `28.2.13676358` 和 platform-tools。设置 `ANDROID_HOME` 后，在 Linux/macOS shell 构建 arm64 Debug 应用：
+准备 JDK 17、Gradle `9.5.0`、Android SDK 37、Build Tools `37.0.0`、NDK `28.2.13676358` 和 platform-tools。SDK 平台包名为 `platforms;android-37.0`，模拟器镜像使用 `system-images;android-37.0;google_apis;x86_64`。设置 `ANDROID_HOME` 后，在 Linux/macOS shell 构建 arm64 Debug 应用：
 
 ```sh
 rustup target add aarch64-linux-android

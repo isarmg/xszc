@@ -46,12 +46,13 @@ gradle.taskGraph.whenReady {
 
 android {
     namespace = "org.sarmg.xszc"
-    compileSdk = 36
+    compileSdk = 37
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "org.sarmg.xszc"
-        minSdk = 26
-        targetSdk = 36
+        minSdk = 37
+        targetSdk = 37
         versionCode = semanticVersion[0] * 1_000_000 + semanticVersion[1] * 1_000 + semanticVersion[2]
         versionName = workspaceVersion
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

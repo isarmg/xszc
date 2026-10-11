@@ -4,7 +4,6 @@ import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.ThumbnailUtils
-import android.os.Build
 import android.provider.MediaStore
 import org.json.JSONObject
 import java.io.File
@@ -95,8 +94,8 @@ class MediaScanner(private val context: Context) {
             MediaStore.Images.ImageColumns.DATE_TAKEN,
             MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME,
             MediaStore.Images.ImageColumns.BUCKET_ID,
+            MediaStore.MediaColumns.RELATIVE_PATH,
         )
-        if (Build.VERSION.SDK_INT >= 29) projection += MediaStore.MediaColumns.RELATIVE_PATH
         var queued = 0
         var bytes = 0L
         var skipped = 0
@@ -120,11 +119,7 @@ class MediaScanner(private val context: Context) {
             val createdColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
             val bucketColumn = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME)
             val bucketIdColumn = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_ID)
-            val relativePathColumn = if (Build.VERSION.SDK_INT >= 29) {
-                cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
-            } else {
-                -1
-            }
+            val relativePathColumn = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
             while (cursor.moveToNext()) {
                 if (queued >= limit) break
                 val bucketName = if (bucketColumn >= 0) cursor.getString(bucketColumn) else null

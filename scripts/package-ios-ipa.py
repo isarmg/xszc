@@ -27,10 +27,10 @@ def package(app: Path, output: Path, version: str) -> None:
         raise ValueError("iOS application version does not match the release")
     if info.get("CFBundleSupportedPlatforms") != ["iPhoneOS"]:
         raise ValueError("IPA requires an iphoneos device build, not a simulator build")
-    if info.get("MinimumOSVersion") != "26.0":
-        raise ValueError("IPA requires a minimum deployment target of iOS 26.0")
-    if not re.fullmatch(r"iphoneos26\.\d+(?:\.\d+)?", str(info.get("DTSDKName", ""))):
-        raise ValueError("IPA must be built with the iOS 26 SDK")
+    if info.get("MinimumOSVersion") != "27.0":
+        raise ValueError("IPA requires a minimum deployment target of iOS 27.0")
+    if not re.fullmatch(r"iphoneos27\.0(?:\.\d+)?", str(info.get("DTSDKName", ""))):
+        raise ValueError("IPA must be built with the stable iOS 27.0 SDK")
     executable = info.get("CFBundleExecutable")
     if not isinstance(executable, str) or Path(executable).name != executable:
         raise ValueError("invalid application executable")

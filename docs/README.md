@@ -4,8 +4,8 @@ xszc 将 Android 和 iOS 上获准访问的照片、视频备份到自己的 xsz
 
 ## 选择平台
 
-- [Android](platforms/android.md)：Android 8.0+ arm64，正式 APK、Debug 构建、签名与 ADB 排障
-- [iOS](platforms/ios.md)：iOS 26.0+，IPA 签名、Mac 构建、模拟器与 Keychain 排障
+- [Android](platforms/android.md)：Android 17/API 37+ arm64，正式 APK、Debug 构建、签名与 ADB 排障
+- [iOS](platforms/ios.md)：iOS 27.0+，IPA 签名、Mac 构建、模拟器与 Keychain 排障
 
 Linux、Windows 和 macOS 是开发机选项；本产品仅提供 Android 和 iOS 应用。
 

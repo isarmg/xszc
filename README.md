@@ -10,7 +10,7 @@ xszc 是 Android 与 iOS 媒体备份客户端，将用户授权的照片和视�
 
 ## 适用平台
 
-Android 8.0（API 26）及以上，正式 APK 仅支持 arm64-v8a；iOS 26.0 及以上。iOS 发行包未签名，安装前需要使用自己的 Apple 身份签名。
+当前源码仅支持最新稳定系统系列：Android 17（API 37）及以上，正式 APK 仅支持 arm64-v8a；iOS 27.0 及以上。iOS 发行包未签名，安装前需要使用自己的 Apple 身份签名。历史 v1.1.0 发行包早于此支持策略，以下已有下载链接仍指向该历史版本。
 
 ## 快速部署
 
@@ -32,7 +32,7 @@ adb shell am start -n org.sarmg.xszc/.MainActivity
 
 先克隆本仓库并进入根目录，准备 Rust `1.99.0`。
 
-Android：准备 JDK 17、Gradle `9.5.0`、Android SDK 36 / Build Tools `36.0.0`、NDK `28.2.13676358` 和 platform-tools，设置 `ANDROID_HOME` 后在 Linux/macOS shell 执行：
+Android：准备 JDK 17、Gradle `9.5.0`、Android SDK 37 / Build Tools `37.0.0`、NDK `28.2.13676358` 和 platform-tools。SDK 平台包名为 `platforms;android-37.0`。设置 `ANDROID_HOME` 后在 Linux/macOS shell 执行：
 
 ```sh
 rustup target add aarch64-linux-android
@@ -47,7 +47,7 @@ adb shell am start -n org.sarmg.xszc/.MainActivity
 
 这是开发用 Debug APK；正式包需要配置自己的发行签名并完成平台验收。
 
-iOS：在装有 Xcode 26、iOS 26 SDK 和 XcodeGen `2.46.0` 的 Mac 上执行：
+iOS：在装有稳定版 Xcode 27.0、iOS 27.0 SDK 和 XcodeGen `2.46.0` 的 Mac 上执行：
 
 ```sh
 ./scripts/verify-ios-toolchain.sh
@@ -57,6 +57,6 @@ rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 open clients/ios/Xszc.xcodeproj
 ```
 
-在 Xcode 选择 `Xszc` scheme、自己的签名团队和已连接设备，运行安装。模拟器调试需安装 iOS 26 运行时；配对测试保留本地签名，避免 Keychain 无法保存凭据。
+在 Xcode 选择 `Xszc` scheme、自己的签名团队和已连接设备，运行安装。模拟器调试需安装 iOS 27.0 运行时；配对测试保留本地签名，避免 Keychain 无法保存凭据。
 
 [详细文档](docs/README.md)

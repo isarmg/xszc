@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
@@ -225,13 +224,7 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
     }
 
     private fun hasMediaAccess(config: SecureConfig): Boolean {
-        if (Build.VERSION.SDK_INT < 33) {
-            return ContextCompat.checkSelfPermission(
-                applicationContext,
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-            ) == PackageManager.PERMISSION_GRANTED
-        }
-        val partial = Build.VERSION.SDK_INT >= 34 && ContextCompat.checkSelfPermission(
+        val partial = ContextCompat.checkSelfPermission(
             applicationContext,
             android.Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED,
         ) == PackageManager.PERMISSION_GRANTED
@@ -247,10 +240,6 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
     }
 
     private fun hasFullMediaAccess(config: SecureConfig): Boolean {
-        if (Build.VERSION.SDK_INT < 33) {
-            return ContextCompat.checkSelfPermission(applicationContext,
-                android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-        }
         return (!config.backupPhotos || ContextCompat.checkSelfPermission(applicationContext,
             android.Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED) &&
             (!config.backupVideos || ContextCompat.checkSelfPermission(applicationContext,
@@ -275,11 +264,7 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
             .setOngoing(true)
             .setProgress(maxOf(total, 1), completed.coerceAtMost(maxOf(total, 1)), total <= 0)
             .build()
-        return if (Build.VERSION.SDK_INT >= 29) {
-            ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            ForegroundInfo(NOTIFICATION_ID, notification)
-        }
+        return ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
     companion object {
