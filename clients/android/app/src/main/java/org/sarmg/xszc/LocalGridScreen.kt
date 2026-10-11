@@ -219,13 +219,14 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
         } else load(scan = true)
     }
     LaunchedEffect(directory, gridState, thumbnailSize) {
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.mapNotNull { directory.positions[it.key] } }
+        val effectDirectory = directory
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.mapNotNull { effectDirectory.positions[it.key] } }
             .distinctUntilChanged().collectLatest { visible ->
-                if (directory.entries.isEmpty()) return@collectLatest
+                if (effectDirectory.entries.isEmpty()) return@collectLatest
                 val first = visible.minOrNull() ?: 0
-                val last = visible.maxOrNull() ?: minOf(23, directory.entries.lastIndex)
-                details.warm(context, profile, directory, first, last)
-                val nearby = directory.entries.subList((first - 12).coerceAtLeast(0), (last + 37).coerceAtMost(directory.entries.size))
+                val last = visible.maxOrNull() ?: minOf(23, effectDirectory.entries.lastIndex)
+                details.warm(context, profile, effectDirectory, first, last)
+                val nearby = effectDirectory.entries.subList((first - 12).coerceAtLeast(0), (last + 37).coerceAtMost(effectDirectory.entries.size))
                 LocalThumbnailCache.prefetch(context, nearby, thumbnailSize)
             }
     }
