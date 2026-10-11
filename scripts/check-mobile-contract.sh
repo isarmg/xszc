@@ -88,4 +88,40 @@ if grep -q -F 'unsigned.tar.gz' .github/workflows/release.yml; then
     fail "iOS releases must publish IPA files rather than app tarballs"
 fi
 
+# Source contract only: pair with the Rust retained-client queue regression.
+# This does not execute BGTask/URLSession cancellation timing on an iOS device.
+python3 - <<'PYIOS'
+from pathlib import Path
+
+source = Path("clients/ios/Xszc/BackupCoordinator.swift").read_text()
+start = source.index("catch {", source.index("do { try await upload.submit"))
+cleanup = source.index("try store.client.markFailed", start)
+end = source.index("processed += 1", cleanup)
+before_cleanup = source[start:cleanup]
+after_cleanup = source[cleanup:end]
+assert "throw error" not in before_cleanup, "Upload cancellation must record retry before propagating"
+assert "throw error" in after_cleanup, "Upload cancellation must still propagate after queue cleanup"
+assert "case .superseded = uploadError" in before_cleanup, "Superseded handling must remain distinct"
+print("iOS upload cancellation source contract passed (native lifecycle not executed)")
+PYIOS
+
+# Source-backed preview fallback checks; native UI execution is a separate gate.
+python3 scripts/test-cloud-preview-fallback.py
+
+# Filter metadata follows each first-page refresh; native UI coverage is in CloudGalleryInstrumentedTest.
+python3 - <<'PYMETADATA'
+from pathlib import Path
+source = Path("clients/android/app/src/main/java/org/sarmg/xszc/CloudGalleryScreen.kt").read_text()
+page = source.split("suspend fun loadPage(reset: Boolean)", 1)[1].split("    fun load(reset:", 1)[0]
+metadata = page.split("if (reset) scope.launch {", 1)[1]
+assert page.index("assets = (assets + page.items)") < page.index("source.albums()")
+for kind in ("albums", "devices"):
+    assert f"val latest = source.{kind}()\n                    if (requestGeneration != generation) return@launch\n                    {kind} = latest" in metadata
+assert metadata.count("catch (error: CancellationException) { throw error }") >= 2
+assert metadata.count("catch (_: Exception)") == 2
+assert source.count("source.albums()") == source.count("source.devices()") == 1
+assert "onRefresh = { if (!selecting) load(true) }" in source
+print("Android filter metadata refresh source contract passed (native UI not executed)")
+PYMETADATA
+
 echo "mobile ABI v1 and state-epoch static gate passed"

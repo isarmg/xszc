@@ -153,6 +153,8 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
     fun openEntry(entry: LocalGalleryEntry, select: Boolean = selecting) {
         // Preview taps supersede one another; independent selection taps do not.
         if (!select) previewGeneration++
+        // A selection intent owns the UI even while its details are still loading.
+        if (select) selectionGeneration++
         val previewRequest = previewGeneration
         val generation = entryGeneration
         val query = LocalGalleryQuery(profile, album, kind, unbacked)
@@ -173,13 +175,19 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
         if (needsPairing) { onLogin(); return }
         if (selection.isEmpty()) { selecting = true; return }
         val selectedRows = selection.values.toList()
+        val generation = selectionGeneration
         busy = true
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { LocalCatalog.persist(TransferStore.open(context, profile).handle, selectedRows) }
-                BackupScheduler.enqueueNow(context, config)
-                resetSelection(); onSubmitted()
-            } catch (e: Exception) { notice = e.message ?: "提交失败" }
+                withContext(Dispatchers.IO) {
+                    LocalCatalog.persist(TransferStore.open(context, profile).handle, selectedRows)
+                    BackupScheduler.enqueueNow(context, config)
+                }
+                // The saved batch still runs, but Cancel/new choices own the current UI.
+                if (generation == selectionGeneration) { resetSelection(); onSubmitted() }
+            } catch (e: Exception) {
+                if (generation == selectionGeneration) notice = e.message ?: "提交失败"
+            }
             finally {
                 busy = false
                 if (queuedRefresh) {

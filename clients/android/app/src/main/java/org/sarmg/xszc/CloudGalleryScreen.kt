@@ -131,6 +131,22 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
             assets = (assets + page.items).distinctBy { it.id }
             cursor = page.nextCursor; started = true; loadError = null
             notice = if (page.cached) "正在显示离线缓存" else ""
+            if (reset) scope.launch {
+                // Optional filter metadata must not delay paging or turn a good page into an error.
+                try {
+                    val latest = source.albums()
+                    if (requestGeneration != generation) return@launch
+                    albums = latest
+                } catch (error: CancellationException) { throw error }
+                catch (_: Exception) { /* Keep the last known album options while offline. */ }
+                if (requestGeneration != generation) return@launch
+                try {
+                    val latest = source.devices()
+                    if (requestGeneration != generation) return@launch
+                    devices = latest
+                } catch (error: CancellationException) { throw error }
+                catch (_: Exception) { /* Album and device metadata recover independently. */ }
+            }
         } catch (error: CancellationException) { throw error }
         catch (error: Exception) {
             if (requestGeneration == generation) { loadError = error.message ?: "加载失败"; notice = loadError.orEmpty() }
@@ -173,9 +189,6 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
     }
     LaunchedEffect(source, profile) {
         seen.clear(); loadPage(true)
-        try { albums = source.albums(); devices = source.devices() }
-        catch (error: CancellationException) { throw error }
-        catch (_: Exception) { /* The gallery remains usable if metadata is temporarily offline. */ }
     }
     var foreground by remember { mutableStateOf(true) }
     var refreshPending by remember(profile) { mutableStateOf(false) }
@@ -408,11 +421,16 @@ internal fun RemoteImage(context: Context, api: BackupApi?, profile: String, ass
             ?: asset.resources.firstOrNull { it.role != "thumbnail" } else asset.resources.firstOrNull { it.role == "thumbnail" }
         if (resource != null && api != null) {
             try {
-                if (preview) asset.resources.firstOrNull { it.role == "thumbnail" }?.let {
-                    bitmap = RemoteImageCache.load(context, api, profile, it, false)
+                if (preview && asset.mediaKind != "video") asset.resources.firstOrNull { it.role == "thumbnail" }?.let {
+                    // A thumbnail is only a progressive placeholder. Its failure
+                    // must not prevent loading the independently stored preview.
+                    try { bitmap = RemoteImageCache.load(context, api, profile, it, false) }
+                    catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                    catch (_: Exception) { }
                 }
                 bitmap = RemoteImageCache.load(context, api, profile, resource, preview)
             }
+            catch (e: kotlinx.coroutines.CancellationException) { throw e }
             catch (e: Exception) { error = e.message ?: "图片加载失败" }
         }
     }

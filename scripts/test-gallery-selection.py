@@ -40,12 +40,14 @@ class SourceContract:
         self.reset = block(self.source, marker) if marker in self.source else ''
         self.toggle = block(self.source, 'fun toggle' if platform == 'android' else 'func toggle')
 
-    def allows(self, kind, *, reset=False, reenter=False, filter_changed=False, toggle=False):
+    def allows(self, kind, *, reset=False, reenter=False, filter_changed=False, toggle=False, pending=False):
         # All reads start with selection active and the default query. Suspend at
         # the detail-read await, apply a user event, then evaluate its real guard.
         epoch = 'selectionGeneration' if kind == 'bulk' else 'entryGeneration'
         generation = 0
         current = int(reset and epoch in self.reset) + int(toggle and epoch in self.toggle)
+        current += int(pending and epoch == 'selectionGeneration' and
+                       'if (select) selectionGeneration++' in self.open[:self.open.index('details.resolve')])
         body = self.bulk if kind == 'bulk' else self.open
         local_query = ('profile', None, None, False)
         namespace = dict(generation=generation, selectionGeneration=current,
@@ -88,6 +90,23 @@ class SourceContract:
         result = bool(eval(predicate, {'__builtins__': {}}, namespace))
         return not result if rejected else result
 
+
+    def allows_submission(self, *, reset=False, toggle=False, pending=False, failure=False):
+        body = block(self.source, 'fun submitBackup')
+        self_generation = int(reset and 'selectionGeneration++' in self.reset)
+        self_generation += int(toggle and 'selectionGeneration++' in self.toggle)
+        self_generation += int(pending and 'if (select) selectionGeneration++' in
+                               self.open[:self.open.index('details.resolve')])
+        assert 'val generation = selectionGeneration' in body[:body.index('withContext')]
+        completion = body[body.index('BackupScheduler.enqueueNow'):body.index('} catch')]
+        if failure:
+            predicate = re.search(r'if \(([^\n]+)\) notice = e.message', body).group(1)
+        else:
+            predicate = re.search(r'if \(([^\n]+)\) \{ resetSelection\(\); onSubmitted\(\)', completion).group(1)
+            # Scheduling A must remain outside the stale-UI guard.
+            assert completion.index('BackupScheduler.enqueueNow') < completion.index('if (')
+        return bool(eval(predicate, {'__builtins__': {}}, dict(
+            generation=0, selectionGeneration=self_generation)))
 
     def allows_preview(self, request, current, selecting=False):
         if self.platform == 'android':
@@ -241,6 +260,63 @@ class SelectionRegressionTests(unittest.TestCase):
                 self.assertTrue(contract.allows_failure('bulk'))
                 self.assertTrue(contract.allows_failure('entry', select=True))
                 self.assertTrue(contract.allows_failure('entry'))
+
+    def test_android_submission_schedules_before_leaving_io(self):
+        # Source wiring only. Real coroutine dispatcher cancellation is covered by
+        # the separate Kotlin extraction probe; this is not a WorkManager test.
+        body = block(SourceContract('android').source, 'fun submitBackup')
+        io = block(body, 'withContext(Dispatchers.IO)')
+        self.assertLess(io.index('LocalCatalog.persist'), io.index('BackupScheduler.enqueueNow'))
+        self.assertEqual(body.count('BackupScheduler.enqueueNow'), 1)
+        self.assertNotIn('resetSelection()', io)
+        self.assertNotIn('onSubmitted()', io)
+
+    def test_android_submission_preserves_new_selection(self):
+        contract = SourceContract('android')
+        self.assertFalse(contract.allows_submission(reset=True, toggle=True))
+        self.assertFalse(contract.allows_submission(toggle=True))
+
+    def test_android_submission_finishes_before_cold_selection_resolves(self):
+        contract = SourceContract('android')
+        reset_by_submission = contract.allows_submission(pending=True)
+        self.assertFalse(reset_by_submission)
+        # B resumes after A. A must not reset entryGeneration and discard B.
+        self.assertTrue(contract.allows('entry', reset=reset_by_submission))
+
+    def test_android_submission_finishes_before_cold_selection_fails(self):
+        contract = SourceContract('android')
+        reset_by_submission = contract.allows_submission(pending=True)
+        self.assertFalse(reset_by_submission)
+        self.assertTrue(contract.allows_failure('entry', reset=reset_by_submission, select=True))
+        self.assertFalse(contract.allows_submission(pending=True, failure=True))
+
+    def test_android_pending_individual_intent_fences_bulk_completion(self):
+        self.assertFalse(SourceContract('android').allows('bulk', pending=True))
+
+    def test_android_pending_individual_intent_keeps_independent_reads(self):
+        contract = SourceContract('android')
+        self.assertNotIn('entryGeneration++', contract.open[:contract.open.index('details.resolve')])
+        self.assertTrue(contract.allows('entry', pending=True))
+        self.assertTrue(contract.allows('entry', pending=True, toggle=True))
+
+    def test_android_submission_respects_cancel_without_reselection(self):
+        self.assertFalse(SourceContract('android').allows_submission(reset=True))
+
+    def test_android_unchanged_submission_still_navigates(self):
+        self.assertTrue(SourceContract('android').allows_submission())
+
+    def test_android_old_submission_error_does_not_replace_new_selection_notice(self):
+        contract = SourceContract('android')
+        self.assertFalse(contract.allows_submission(reset=True, toggle=True, failure=True))
+        self.assertFalse(contract.allows_submission(reset=True, failure=True))
+
+    def test_android_current_submission_error_still_allows_retry(self):
+        contract = SourceContract('android')
+        self.assertTrue(contract.allows_submission(failure=True))
+        body = block(contract.source, 'fun submitBackup')
+        failure = body[body.index('} catch'):body.index('finally')]
+        self.assertNotIn('resetSelection', failure)
+        self.assertIn('busy = false', body[body.index('finally'):])
 
     def test_android_cancel_and_submission_use_reset(self):
         source = SourceContract('android').source

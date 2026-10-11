@@ -399,7 +399,15 @@ struct CloudImage: View {
             guard let library else { return }
             do {
                 if let thumbnail = asset.thumbnail {
-                    image = try await RemoteImageCache.shared.image(library: library, profile: profile, resource: thumbnail, preview: false)
+                    do {
+                        image = try await RemoteImageCache.shared.image(library: library, profile: profile, resource: thumbnail, preview: false)
+                    } catch {
+                        // Only the progressive placeholder may fail independently.
+                        // Grid/video thumbnails still surface their own errors.
+                        if !preview || asset.mediaKind == "video" || asset.primary == nil || Task.isCancelled || error is CancellationError {
+                            throw error
+                        }
+                    }
                 }
                 if preview && asset.mediaKind != "video", let primary = asset.primary {
                     image = try await RemoteImageCache.shared.image(library: library, profile: profile, resource: primary, preview: true)

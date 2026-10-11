@@ -854,3 +854,56 @@ fn declared_multiresource_completeness_and_manual_override_are_precise() {
     );
     assert_eq!(unknown.as_array().unwrap().len(), 1);
 }
+
+#[test]
+fn audit_interrupted_upload_requires_failure_transition_on_same_client() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo.jpg");
+    fs::write(&source, b"12345678").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    let b = batch(&client);
+    let id = client.enqueue(resource(&source, Some(&b))).unwrap();
+    client
+        .transfer(request(json!({"op":"set_item", "batch_id":b,
+        "item_id":"selected", "state":"queued", "error":null})))
+        .unwrap();
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    let prepared = client.next_prepared(&staging).unwrap().unwrap();
+    client
+        .mark_upload(&id, &Uuid::new_v4().to_string())
+        .unwrap();
+    // An interrupted owner that skips mark_failed leaves this retained Client stuck.
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    client
+        .transfer(request(json!({"op":"retry_batch", "batch_id":b})))
+        .unwrap();
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    assert_eq!(client.stats().unwrap().uploading, 1);
+    assert!(client
+        .transfer(request(json!({"op":"next_pending_item"})))
+        .unwrap()
+        .is_null());
+    // Cleanup must not reactivate a batch the user cancelled in the meantime.
+    client
+        .transfer(request(json!({"op":"cancel_batch", "batch_id":b})))
+        .unwrap();
+    client
+        .mark_failed(&id, "transfer interrupted", true)
+        .unwrap();
+    assert_eq!(
+        client
+            .transfer(request(json!({"op":"active", "job_id":id})))
+            .unwrap(),
+        json!(false)
+    );
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    // Explicit retry reactivates the batch and reuses the same prepared generation.
+    client
+        .transfer(request(json!({"op":"retry_batch", "batch_id":b})))
+        .unwrap();
+    let resumed = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(resumed.job_id, id);
+    assert_eq!(resumed.generation_id, prepared.generation_id);
+    assert_eq!(fs::read(&source).unwrap(), b"12345678");
+    println!("AUDIT_IOS_CANCEL_CACHED_CLIENT: uploading skipped after retry; mark_failed restores identical generation");
+}

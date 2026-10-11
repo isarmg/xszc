@@ -162,6 +162,64 @@ class CloudGalleryInstrumentedTest {
         compose.onNodeWithTag("cloud.photo.fixture-0").assertIsDisplayed()
     }
 
+    @Test fun pullRefreshUpdatesAlbumAndDeviceOptions() {
+        val version = AtomicInteger(0)
+        val albumReads = AtomicInteger()
+        val deviceReads = AtomicInteger()
+        val source = object : CloudGallerySource {
+            override suspend fun page(cursor: String?, trash: Boolean, favorite: Boolean,
+                album: String?, filters: CloudFilters) = RemoteLibrary.Page(listOf(cloudFixture(0)), null)
+            override suspend fun albums(): List<Pair<String, String>> {
+                albumReads.incrementAndGet()
+                return listOf("album" to if (version.get() == 0) "Old album" else "Renamed album")
+            }
+            override suspend fun devices(): List<Pair<String, String>> {
+                deviceReads.incrementAndGet()
+                return listOf("device" to if (version.get() == 0) "Old phone" else "Renamed phone")
+            }
+        }
+        show(source)
+        compose.waitUntil(5_000) { albumReads.get() == 1 && deviceReads.get() == 1 }
+        version.set(1)
+        compose.onNodeWithTag("cloud.grid").performTouchInput { swipeDown() }
+        compose.waitUntil(5_000) { albumReads.get() > 1 && deviceReads.get() > 1 }
+        compose.onNodeWithTag("cloud.filter").performClick()
+        compose.onNodeWithText("相册").performClick()
+        compose.onNodeWithText("Renamed album").assertIsDisplayed()
+        compose.onNodeWithText("Old album").assertDoesNotExist()
+        compose.onNodeWithText("全部相册").performClick()
+        compose.onNodeWithTag("cloud.filter").performClick()
+        compose.onNodeWithText("设备").performClick()
+        compose.onNodeWithText("Renamed phone").assertIsDisplayed()
+        compose.onNodeWithText("Old phone").assertDoesNotExist()
+    }
+
+    @Test fun pullRefreshRecoversAlbumOptionsAfterOptionalFailure() {
+        val albumReads = AtomicInteger()
+        val deviceReads = AtomicInteger()
+        val source = object : CloudGallerySource {
+            override suspend fun page(cursor: String?, trash: Boolean, favorite: Boolean,
+                album: String?, filters: CloudFilters) = RemoteLibrary.Page(listOf(cloudFixture(0)), null)
+            override suspend fun albums(): List<Pair<String, String>> {
+                if (albumReads.incrementAndGet() == 1) error("temporary album failure")
+                return listOf("album" to "Recovered album")
+            }
+            override suspend fun devices(): List<Pair<String, String>> {
+                deviceReads.incrementAndGet()
+                return listOf("device" to "Available phone")
+            }
+        }
+        show(source)
+        compose.waitUntil(5_000) { deviceReads.get() == 1 }
+        compose.onNodeWithTag("cloud.photo.fixture-0").assertIsDisplayed()
+        compose.onNodeWithText("云端图库加载失败").assertDoesNotExist()
+        compose.onNodeWithTag("cloud.grid").performTouchInput { swipeDown() }
+        compose.waitUntil(5_000) { albumReads.get() > 1 && deviceReads.get() > 1 }
+        compose.onNodeWithTag("cloud.filter").performClick()
+        compose.onNodeWithText("相册").performClick()
+        compose.onNodeWithText("Recovered album").assertIsDisplayed()
+    }
+
     @Test fun queuedDownloadSurvivesLeavingCloudComposition() {
         val profile = "view-queue-${UUID.randomUUID()}"
         val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

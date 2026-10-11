@@ -489,7 +489,7 @@ final class BackupCoordinator: ObservableObject {
                         }
                     } }
                     catch {
-                        if error is CancellationError { throw error }
+                        // Cancellation must also release uploading state in the cached queue.
                         let superseded: Bool
                         if let uploadError = error as? UploadFailure, case .superseded = uploadError {
                             superseded = true
