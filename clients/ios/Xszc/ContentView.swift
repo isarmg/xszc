@@ -21,7 +21,7 @@ struct ContentView: View {
                             GalleryEmptyState(title: "登录后查看云端照片", message: "随时浏览、收藏和下载已备份的媒体。", icon: "cloud")
                             Button("登录账户") { account = true }.buttonStyle(.borderedProminent)
                         }
-                    } else { CloudGalleryScreen().id(coordinator.profile) }
+                    } else { CloudGalleryScreen(isActive: tab == 1 && !account).id(coordinator.profile) }
                 }.toolbar(.hidden, for: .navigationBar)
             }.tabItem { Label("云端", systemImage: "cloud") }.tag(1)
             NavigationStack { TransfersScreen().id(coordinator.profile).toolbar(.hidden, for: .navigationBar) }

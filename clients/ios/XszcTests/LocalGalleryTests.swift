@@ -69,6 +69,161 @@ final class LocalGalleryTests: XCTestCase {
         }
     }
 
+    // These run the production coordinator's record/consume boundary. SwiftUI supplies
+    // readiness; these are not PhotoKit, HTTP or gesture-level UI tests.
+    @MainActor
+    func testCommittedCloudChangeWaitsForPaginationAndRefreshesOnce() async {
+        let coordinator = BackupCoordinator()
+        let asset = cloudAsset()
+        coordinator.remoteAssets = [asset]
+        coordinator.libraryLoading = true
+        coordinator.recordGalleryChanges(true, for: coordinator.gallerySyncIdentity)
+        coordinator.recordGalleryChanges(false, for: coordinator.gallerySyncIdentity)
+        var refreshes = 0
+        await coordinator.refreshSynchronizedGallery(when: true) { refreshes += 1 }
+        XCTAssertEqual(refreshes, 0)
+        XCTAssertTrue(coordinator.galleryRefreshPending)
+        XCTAssertEqual(coordinator.remoteAssets.map(\.id), [asset.id])
+        coordinator.libraryLoading = false
+        await coordinator.refreshSynchronizedGallery(when: true) { refreshes += 1 }
+        await coordinator.refreshSynchronizedGallery(when: true) { refreshes += 1 }
+        XCTAssertEqual(refreshes, 1)
+        XCTAssertFalse(coordinator.galleryRefreshPending)
+    }
+
+    @MainActor
+    func testCommittedCloudChangeWaitsForPreviewOrInactiveViewToBecomeReady() async {
+        let coordinator = BackupCoordinator()
+        let asset = cloudAsset()
+        coordinator.remoteAssets = [asset]
+        let identity = coordinator.gallerySyncIdentity
+        var refreshes = 0
+        // The screen reports false while previewing, selecting, backgrounded or off-tab.
+        coordinator.recordGalleryChanges(true, for: identity)
+        await coordinator.refreshSynchronizedGallery(when: false) { refreshes += 1 }
+        XCTAssertTrue(coordinator.galleryRefreshPending)
+        XCTAssertEqual(coordinator.remoteAssets.map(\.id), [asset.id])
+        XCTAssertEqual(refreshes, 0)
+        // Closing the preview or returning to the active tab consumes the retained signal.
+        await coordinator.refreshSynchronizedGallery(when: true) { refreshes += 1 }
+        XCTAssertEqual(refreshes, 1)
+    }
+
+    @MainActor
+    func testCloudChangesRefreshCurrentAlbumWithoutReinstatingPreviousQuery() async {
+        let coordinator = BackupCoordinator()
+        let identity = coordinator.gallerySyncIdentity
+        let oldAlbum = UUID(), currentAlbum = UUID()
+        coordinator.selectedRemoteAlbum = oldAlbum
+        coordinator.recordGalleryChanges(true, for: identity)
+        coordinator.selectedRemoteAlbum = currentAlbum
+        var refreshedAlbums: [UUID?] = []
+        await coordinator.refreshSynchronizedGallery(when: true) {
+            refreshedAlbums.append(coordinator.selectedRemoteAlbum)
+        }
+        // A same-account sync may commit after the newer query was already loaded.
+        coordinator.recordGalleryChanges(true, for: identity)
+        await coordinator.refreshSynchronizedGallery(when: true) {
+            refreshedAlbums.append(coordinator.selectedRemoteAlbum)
+        }
+        XCTAssertEqual(refreshedAlbums, [currentAlbum, currentAlbum])
+        XCTAssertEqual(coordinator.selectedRemoteAlbum, currentAlbum)
+    }
+
+    @MainActor
+    func testOldAccountOrCredentialGenerationCannotRequestCloudRefresh() async {
+        let coordinator = BackupCoordinator()
+        let identity = coordinator.gallerySyncIdentity
+        coordinator.recordGalleryChanges(true, for: (identity.profile + "-different", identity.generation))
+        coordinator.recordGalleryChanges(true, for: (identity.profile, identity.generation - 1))
+        var refreshes = 0
+        await coordinator.refreshSynchronizedGallery(when: true) { refreshes += 1 }
+        XCTAssertFalse(coordinator.galleryRefreshPending)
+        XCTAssertEqual(refreshes, 0)
+        coordinator.recordGalleryChanges(true, for: identity)
+        await coordinator.refreshSynchronizedGallery(when: true) { refreshes += 1 }
+        XCTAssertEqual(refreshes, 1)
+    }
+
+    @MainActor
+    func testFirstSyncBatchCommitsThenNextBatchFailsWithoutLosingRefresh() async throws {
+        let profile = "gallery-sync-test-\(UUID().uuidString)"
+        let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true)
+        defer { try? FileManager.default.removeItem(at: support.appendingPathComponent(profile)) }
+        let store = try TransferStore(profile: profile)
+        try store.gallery(["op": "begin_snapshot", "sequence": Int64(0)])
+        try store.gallery(["op": "snapshot_page", "cursor": NSNull(), "items": [], "next_cursor": NSNull()])
+        let coordinator = BackupCoordinator()
+        let identity = coordinator.gallerySyncIdentity
+        let assetId = UUID().uuidString
+        let synchronizer = GallerySynchronizer()
+        do {
+            _ = try await synchronizer.synchronize(store: store, profile: profile, read: { path, _ in
+                if path == "/v1/sync?after=0&limit=1000" {
+                    return ["events": [["sequence": Int64(1), "entity_kind": "asset", "entity_id": assetId,
+                        "operation": "upsert", "changed_at_ms": Int64(1)]],
+                        "next_sequence": Int64(1), "has_more": true] as [String: Any]
+                }
+                if path == "/v1/assets/\(assetId)" {
+                    return ["asset_id": assetId, "source_asset_id": "fixture", "media_kind": "photo",
+                        "source_created_at_ms": Int64(1), "favorite": false, "archived": false,
+                        "trashed_at_ms": NSNull(), "tag_names": [], "resources": []] as [String: Any]
+                }
+                throw CloudSyncFixtureFailure.nextPage
+            }, onChange: { coordinator.recordGalleryChanges(true, for: identity) })
+            XCTFail("The second page should fail after the first commit")
+        } catch CloudSyncFixtureFailure.nextPage { }
+        let state = try XCTUnwrap(try store.gallery(["op": "state"]) as? [String: Any])
+        XCTAssertEqual(state["sequence"] as? Int64, 1)
+        XCTAssertTrue(coordinator.galleryRefreshPending)
+        // Retrying an empty later page must not erase the already committed notification.
+        let changed = try await synchronizer.synchronize(store: store, profile: profile, read: { path, _ in
+            guard path == "/v1/sync?after=1&limit=1000" else { throw CloudSyncFixtureFailure.nextPage }
+            return ["events": [], "next_sequence": Int64(1), "has_more": false] as [String: Any]
+        }, onChange: { coordinator.recordGalleryChanges(true, for: identity) })
+        XCTAssertFalse(changed)
+        XCTAssertTrue(coordinator.galleryRefreshPending)
+        var refreshes = 0
+        await coordinator.refreshSynchronizedGallery(when: true) { refreshes += 1 }
+        XCTAssertEqual(refreshes, 1)
+    }
+
+    @MainActor
+    func testDeferredRefreshFailureIsVisibleAndExplicitRetryIsNotSuppressed() async throws {
+        let coordinator = BackupCoordinator()
+        // Unique invalid local configuration rejects before making any HTTP request.
+        coordinator.serverURL = "gallery-refresh-fixture-\(UUID().uuidString)"
+        coordinator.authorizationCode = ""
+        let profile = coordinator.profile
+        let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true)
+        defer { try? FileManager.default.removeItem(at: support.appendingPathComponent(profile)) }
+        coordinator.remoteAssets = [cloudAsset()]
+        coordinator.recordGalleryChanges(true, for: coordinator.gallerySyncIdentity)
+        await coordinator.refreshSynchronizedGallery(when: true) { await coordinator.refreshLibrary() }
+        let error = try XCTUnwrap(coordinator.libraryError)
+        XCTAssertFalse(error.isEmpty)
+        XCTAssertEqual(coordinator.status, error)
+        XCTAssertTrue(coordinator.remoteAssets.isEmpty)
+        XCTAssertFalse(coordinator.libraryLoading)
+        XCTAssertFalse(coordinator.galleryRefreshPending)
+        var repeated = 0
+        await coordinator.refreshSynchronizedGallery(when: true) { repeated += 1 }
+        XCTAssertEqual(repeated, 0, "Do not automatically retry a displayed error in a hot loop")
+        coordinator.libraryError = "old error sentinel"
+        await coordinator.refreshLibrary()
+        XCTAssertEqual(coordinator.libraryError, error, "Explicit retry executes even without a pending sync signal")
+    }
+
+    private enum CloudSyncFixtureFailure: Error { case nextPage }
+
+    private func cloudAsset() -> RemoteAsset {
+        RemoteAsset(assetId: UUID(), sourceAssetId: "gallery-refresh-fixture", mediaKind: "photo",
+            sourceCreatedAtMs: 1000, favorite: false, archived: false, trashedAtMs: nil,
+            tagNames: [], resources: [])
+    }
+
     private static func id(_ index: Int) -> String { String(format: "media-%06d", index) }
 
     private func withCatalog(count: Int, body: (TransferStore) throws -> Void) throws {

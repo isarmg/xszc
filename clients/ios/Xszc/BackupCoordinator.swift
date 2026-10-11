@@ -53,6 +53,7 @@ final class BackupCoordinator: ObservableObject {
     @Published var duplicateGroups: [DuplicateGroup] = []
     @Published var favoritesOnly = false
     @Published var libraryLoading = false
+    @Published private(set) var galleryRefreshPending = false
     @Published var libraryError: String? = nil
     @Published var nextCursor: String?
     @Published var downloads: [DownloadTransfer] = []
@@ -82,6 +83,7 @@ final class BackupCoordinator: ObservableObject {
 
     private func credentialsChanged() {
         credentialGeneration += 1
+        galleryRefreshPending = false
         libraryGeneration += 1
         uploader?.cancel(); uploader = nil
         downloadTask?.cancel(); downloadTask = nil
@@ -229,6 +231,7 @@ final class BackupCoordinator: ObservableObject {
 
     func refreshLibrary(trashed: Bool? = nil) async {
         libraryGeneration += 1
+        galleryRefreshPending = false
         if let trashed { showingTrash = trashed }
         remoteAssets = []; nextCursor = nil; seenCursors = []
         libraryError = nil
@@ -261,8 +264,20 @@ final class BackupCoordinator: ObservableObject {
             libraryError = error.localizedDescription; status = error.localizedDescription
         } }
     }
+    var gallerySyncIdentity: (profile: String, generation: Int) { (profile, credentialGeneration) }
+    func recordGalleryChanges(_ changed: Bool, for identity: (profile: String, generation: Int)) {
+        guard identity.profile == profile, identity.generation == credentialGeneration else { return }
+        // This invalidates the account's current query, not the query active when sync began.
+        galleryRefreshPending = galleryRefreshPending || changed
+    }
+    func refreshSynchronizedGallery(when ready: Bool, refresh: () async -> Void) async {
+        guard ready, !libraryLoading, galleryRefreshPending else { return }
+        galleryRefreshPending = false
+        await refresh()
+    }
     func synchronizeGallery() async {
-        let identity = profile
+        let requestIdentity = gallerySyncIdentity
+        let identity = requestIdentity.profile
         guard let connection = library, let cache = try? store() else { return }
         do {
             if let values = try await connection.json("/v1/devices") as? [[String: Any]], identity == profile {
@@ -271,8 +286,9 @@ final class BackupCoordinator: ObservableObject {
                     return RemoteDevice(id: id, name: name)
                 }
             }
-            let changed = try await GallerySynchronizer.shared.synchronize(library: connection, store: cache, profile: identity)
-            if changed && identity == profile && !libraryLoading { await refreshLibrary() }
+            _ = try await GallerySynchronizer.shared.synchronize(library: connection, store: cache, profile: identity) {
+                self.recordGalleryChanges(true, for: requestIdentity)
+            }
         } catch { if !Task.isCancelled && identity == profile { status = "图库缓存待同步：\(error.localizedDescription)" } }
     }
     func enqueueLocal(_ descriptors: [String]) async {

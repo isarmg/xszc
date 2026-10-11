@@ -7,6 +7,7 @@ private struct RemoteMonthGroup: Identifiable {
 }
 
 struct CloudGalleryScreen: View {
+    let isActive: Bool
     @EnvironmentObject private var coordinator: BackupCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @State private var preview: RemoteAsset?
@@ -29,6 +30,9 @@ struct CloudGalleryScreen: View {
             calendar.dateInterval(of: .month, for: Date(timeIntervalSince1970: Double(asset.sourceCreatedAtMs) / 1000))?.start ?? .distantPast
         }
         return grouped.keys.sorted(by: >).map { RemoteMonthGroup(id: $0, assets: grouped[$0] ?? []) }
+    }
+    private var canRefreshSynchronizedGallery: Bool {
+        isActive && scenePhase == .active && preview == nil && !isSelecting && !coordinator.libraryLoading
     }
     private var hasFilters: Bool {
         coordinator.favoritesOnly || coordinator.selectedRemoteAlbum != nil || coordinator.cloudFilters != CloudFilters()
@@ -145,13 +149,22 @@ struct CloudGalleryScreen: View {
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showDuplicates = false } } }
             }
         }
-        .task(id: coordinator.profile) {
+        .task(id: isActive) {
+            guard isActive else { return }
             resetSelection()
             if coordinator.remoteAssets.isEmpty { await coordinator.refreshLibrary() }
             while !Task.isCancelled {
-                if preview == nil && !isSelecting { await coordinator.synchronizeGallery() }
+                if isActive && scenePhase == .active && preview == nil && !isSelecting { await coordinator.synchronizeGallery() }
                 do { try await Task.sleep(for: .seconds(30)) } catch { break }
             }
+        }
+        .onChange(of: canRefreshSynchronizedGallery && coordinator.galleryRefreshPending, initial: true) { _, ready in
+            // An unstructured UI action survives its own pending/loading state changes.
+            if ready { Task {
+                await coordinator.refreshSynchronizedGallery(when: canRefreshSynchronizedGallery) {
+                    await coordinator.refreshLibrary()
+                }
+            } }
         }
         .onChange(of: coordinator.cloudFilters) { _, _ in
             resetSelection(ending: false); Task { await coordinator.refreshLibrary() }
@@ -164,7 +177,7 @@ struct CloudGalleryScreen: View {
         }
         .onChange(of: coordinator.showingTrash) { _, _ in resetSelection(ending: false) }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active && preview == nil && !isSelecting { Task { await coordinator.synchronizeGallery() } }
+            if isActive && phase == .active && preview == nil && !isSelecting { Task { await coordinator.synchronizeGallery() } }
         }
         .fullScreenCover(item: Binding(get: { preview }, set: { setPreview($0) })) { asset in
             PhotoViewerScreen(initial: asset, onClose: { setPreview(nil) }).environmentObject(coordinator)
