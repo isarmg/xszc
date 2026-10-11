@@ -425,7 +425,7 @@ final class NavigationTests: XCTestCase {
             let alert = springboard.alerts.firstMatch
             if !allowFullPhotoAccess(alert), alert.exists, !recordedUnrecognizedAlert {
                 recordedUnrecognizedAlert = true
-                print("XSZC_UI_PHOTO_ACCESS_UNRECOGNIZED_BUTTONS: \(alert.buttons.allElementsBoundByIndex.map(\.label))")
+                print("XSZC_UI_PHOTO_ACCESS_UNRECOGNIZED: \(alert.label)")
                 print(alert.debugDescription)
             }
             if tile.exists { return }
@@ -443,7 +443,7 @@ final class NavigationTests: XCTestCase {
 
     @MainActor private func allowFullPhotoAccess(_ alert: XCUIElement) -> Bool {
         guard alert.exists else { return false }
-        let text = ([alert.label] + alert.staticTexts.allElementsBoundByIndex.map(\.label)).joined(separator: "\n")
+        let text = alert.label
         let refersToPhotos = text.lowercased().contains("photo") || text.contains("照片") || text.contains("图库")
         guard text.contains("媒体备份"), refersToPhotos else { return false }
         let allow = alert.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "允许完全访问", "Allow Full Access")).firstMatch
