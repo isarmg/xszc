@@ -69,8 +69,8 @@ final class NavigationTests: XCTestCase {
         let rewound = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value BEGINSWITH %@", "00:00"), object: progress)
         XCTAssertEqual(XCTWaiter.wait(for: [rewound], timeout: 5), .completed)
         play.tap()
-        let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "暂停"), object: play)
-        XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 5), .completed)
+        // Slow accessibility queries can outlast the 3.5s auto-hide window.
+        // Verify playback after explicitly revealing the controls below.
         let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: play)
         XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 8), .completed)
         preview.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5)).tap()
