@@ -420,12 +420,19 @@ final class NavigationTests: XCTestCase {
         // Fresh hosted simulators may still be indexing the large imported
         // library after addmedia returns and permission is first granted.
         let deadline = ProcessInfo.processInfo.systemUptime + 240
+        var recordedUnrecognizedAlert = false
         while ProcessInfo.processInfo.systemUptime < deadline {
-            _ = allowFullPhotoAccess(springboard.alerts.firstMatch)
+            let alert = springboard.alerts.firstMatch
+            if !allowFullPhotoAccess(alert), alert.exists, !recordedUnrecognizedAlert {
+                recordedUnrecognizedAlert = true
+                print("XSZC_UI_PHOTO_ACCESS_UNRECOGNIZED_BUTTONS: \(alert.buttons.allElementsBoundByIndex.map(\.label))")
+                print(alert.debugDescription)
+            }
             if tile.exists { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
-        XCTFail("Authorized photos did not load: \(app.debugDescription)")
+        screenshot("photo-access-failure")
+        XCTFail("Authorized photos did not load. App: \(app.debugDescription). SpringBoard: \(springboard.debugDescription)")
     }
 
     @MainActor private func monitorFullPhotoAccess() -> NSObjectProtocol {
@@ -436,11 +443,9 @@ final class NavigationTests: XCTestCase {
 
     @MainActor private func allowFullPhotoAccess(_ alert: XCUIElement) -> Bool {
         guard alert.exists else { return false }
-        let title = alert.label
-        let englishTitle = title.lowercased()
-        let english = englishTitle.contains("full access") && englishTitle.contains("photo library")
-        let chinese = title.contains("完全访问") && (title.contains("照片") || title.contains("图库"))
-        guard title.contains("媒体备份"), english || chinese else { return false }
+        let text = ([alert.label] + alert.staticTexts.allElementsBoundByIndex.map(\.label)).joined(separator: "\n")
+        let refersToPhotos = text.lowercased().contains("photo") || text.contains("照片") || text.contains("图库")
+        guard text.contains("媒体备份"), refersToPhotos else { return false }
         let allow = alert.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "允许完全访问", "Allow Full Access")).firstMatch
         guard allow.exists else { return false }
         allow.tap()
