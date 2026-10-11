@@ -35,8 +35,14 @@ test -r /dev/kvm && test -w /dev/kvm
 printf 'no\n' | avdmanager create avd -n "$avd_name" -k 'system-images;android-37.0;google_apis;x86_64'
 test -f "$ANDROID_AVD_HOME/$avd_name.ini"
 "$sdk_root/emulator/emulator" -list-avds | grep -Fx "$avd_name"
+# Keep headless CI video decoding in the Android guest, alongside SwiftShader
+# graphics. The goldfish host decoder in the API 37 image fails its shared
+# MessageQueue SELinux check; the same playback tests still exercise MediaCodec.
+# https://android.googlesource.com/platform/external/qemu/+/emu-master-dev/android/data/advancedFeatures.ini
+grep -Eq '^HardwareDecoder[[:space:]]*=' "$sdk_root/emulator/lib/advancedFeatures.ini"
 "$sdk_root/emulator/emulator" -avd "$avd_name" -port 5554 -no-window -no-audio \
-  -no-boot-anim -no-snapshot -gpu swiftshader_indirect >"${RUNNER_TEMP:?}/xszc-emulator.log" 2>&1 &
+  -no-boot-anim -no-snapshot -gpu swiftshader_indirect -feature -HardwareDecoder \
+  >"${RUNNER_TEMP:?}/xszc-emulator.log" 2>&1 &
 emulator_pid=$!
 booted=false
 boot_deadline=$((SECONDS + 360))
@@ -54,4 +60,6 @@ if [[ "$booted" != true ]]; then
   exit 1
 fi
 test "$(timeout --kill-after=2s 10s "$sdk_root/platform-tools/adb" -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')" = 37
+test "$(timeout --kill-after=2s 10s "$sdk_root/platform-tools/adb" -s "$serial" shell getprop ro.boot.qemu.hwcodec.avcdec | tr -d '\r')" != 2
+test "$(timeout --kill-after=2s 10s "$sdk_root/platform-tools/adb" -s "$serial" shell getenforce | tr -d '\r')" = Enforcing
 ANDROID_SERIAL="$serial" timeout --kill-after=30s 10m gradle -p clients/android -PxszcEmulatorTests=true connectedDebugAndroidTest
