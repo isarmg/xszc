@@ -23,6 +23,7 @@ import java.io.File
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 internal fun cloudFixture(index: Int): RemoteAsset = RemoteAsset("fixture-$index",
@@ -179,10 +180,15 @@ class CloudGalleryInstrumentedTest {
             }
         }
         show(source)
-        compose.waitUntil(5_000) { albumReads.get() == 1 && deviceReads.get() == 1 }
-        version.set(1)
+        compose.waitUntil(5_000) { albumReads.get() >= 1 && deviceReads.get() >= 1 }
+        // Initial composition and ON_RESUME can both load metadata. Establish the
+        // idle baseline instead of assuming the activity has loaded exactly once.
+        val before = compose.runOnIdle {
+            version.set(1)
+            albumReads.get() to deviceReads.get()
+        }
         compose.onNodeWithTag("cloud.grid").performTouchInput { swipeDown() }
-        compose.waitUntil(5_000) { albumReads.get() > 1 && deviceReads.get() > 1 }
+        compose.waitUntil(5_000) { albumReads.get() > before.first && deviceReads.get() > before.second }
         compose.onNodeWithTag("cloud.filter").performClick()
         compose.onNodeWithText("相册").performClick()
         compose.onNodeWithText("Renamed album").assertIsDisplayed()
@@ -195,13 +201,16 @@ class CloudGalleryInstrumentedTest {
     }
 
     @Test fun pullRefreshRecoversAlbumOptionsAfterOptionalFailure() {
+        val albumsAvailable = AtomicBoolean(false)
         val albumReads = AtomicInteger()
         val deviceReads = AtomicInteger()
         val source = object : CloudGallerySource {
             override suspend fun page(cursor: String?, trash: Boolean, favorite: Boolean,
                 album: String?, filters: CloudFilters) = RemoteLibrary.Page(listOf(cloudFixture(0)), null)
             override suspend fun albums(): List<Pair<String, String>> {
-                if (albumReads.incrementAndGet() == 1) error("temporary album failure")
+                albumReads.incrementAndGet()
+                // Every initial/resume load fails until this test enables recovery.
+                if (!albumsAvailable.get()) error("temporary album failure")
                 return listOf("album" to "Recovered album")
             }
             override suspend fun devices(): List<Pair<String, String>> {
@@ -210,11 +219,15 @@ class CloudGalleryInstrumentedTest {
             }
         }
         show(source)
-        compose.waitUntil(5_000) { deviceReads.get() == 1 }
+        compose.waitUntil(5_000) { albumReads.get() >= 1 && deviceReads.get() >= 1 }
         compose.onNodeWithTag("cloud.photo.fixture-0").assertIsDisplayed()
         compose.onNodeWithText("云端图库加载失败").assertDoesNotExist()
+        val before = compose.runOnIdle {
+            albumsAvailable.set(true)
+            albumReads.get() to deviceReads.get()
+        }
         compose.onNodeWithTag("cloud.grid").performTouchInput { swipeDown() }
-        compose.waitUntil(5_000) { albumReads.get() > 1 && deviceReads.get() > 1 }
+        compose.waitUntil(5_000) { albumReads.get() > before.first && deviceReads.get() > before.second }
         compose.onNodeWithTag("cloud.filter").performClick()
         compose.onNodeWithText("相册").performClick()
         compose.onNodeWithText("Recovered album").assertIsDisplayed()
