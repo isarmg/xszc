@@ -21,7 +21,7 @@ struct AccountScreen: View {
                 .onSubmit { focusedField = .password }
                 .accessibilityLabel("服务器地址").accessibilityIdentifier("account.server")
                 .padding(.horizontal, 18).frame(minHeight: 52)
-                .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .background(Color(uiColor: .tertiarySystemFill), in: AppShapes.field)
                 .disabled(busy)
             SecureField("密码", text: $password)
                 .keyboardType(.asciiCapable).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -29,7 +29,7 @@ struct AccountScreen: View {
                 .onSubmit { login() }
                 .accessibilityLabel("密码").accessibilityIdentifier("pairing.authorization-code")
                 .padding(.horizontal, 18).frame(minHeight: 52)
-                .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .background(Color(uiColor: .tertiarySystemFill), in: AppShapes.field)
                 .disabled(busy)
             if !message.isEmpty {
                 Text(message).font(.footnote).foregroundStyle(.red)
@@ -49,7 +49,7 @@ struct AccountScreen: View {
         }
         .textFieldStyle(.plain)
         .padding(20)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 46, style: .continuous))
+        .glassEffect(.regular, in: AppShapes.dialog)
         .accessibilityElement(children: .contain).accessibilityIdentifier("account.dialog")
         .accessibilityAddTraits(.isModal)
         .accessibilityAction(.escape) { if !busy { focusedField = nil; onDismiss() } }

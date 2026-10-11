@@ -436,6 +436,7 @@ struct LocalGalleryScreen: View {
                         }
                 }
             }
+            .clipShape(AppShapes.photo)
             .overlay(alignment: .bottomLeading) {
                 if entry.kind == "video" {
                     Image(systemName: "video.fill").font(.caption).foregroundStyle(.white)
@@ -454,7 +455,6 @@ struct LocalGalleryScreen: View {
                         .padding(6).background(.black.opacity(0.55), in: Circle()).padding(5).accessibilityLabel("自动备份已排除")
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(alignment: .topTrailing) {
                 if isSelecting {
                     GeometryReader { proxy in

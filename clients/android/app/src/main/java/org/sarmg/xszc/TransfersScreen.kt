@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -89,7 +88,7 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
             Box {
                 TransferHeader("上传", uploadProgress(photos, active), TransferRate.formatted(uploadState?.rate?.bytesPerSecond(now) ?: 0.0),
                     uploadsExpanded, "transfers.upload", onLongClick = { uploadMenu = true }) { uploadsExpanded = !uploadsExpanded }
-                DropdownMenu(uploadMenu, { uploadMenu = false }) {
+                DropdownMenu(uploadMenu, { uploadMenu = false }, shape = AppShapes.group) {
                     DropdownMenuItem(text = { Text("继续上传") }, enabled = config.isLoggedIn && uploadState == null, onClick = {
                         uploadMenu = false; BackupScheduler.enqueueNow(context, config, automatic = config.autoBackup)
                     })
@@ -104,7 +103,7 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
                 }, onLongClick = { menu = true }) {
                     TransferImage(context, api, profile, TransferPreview(photo.id, photo.name, photo.uri), false, it)
                 }
-                DropdownMenu(menu, { menu = false }) {
+                DropdownMenu(menu, { menu = false }, shape = AppShapes.group) {
                     DropdownMenuItem(text = { Text(photo.status) }, enabled = false, onClick = {})
                     photo.batchId?.let { id ->
                             DropdownMenuItem(text = { Text("重试上传") }, onClick = { menu = false; changeBatch(id, true) })
@@ -125,7 +124,7 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
                 }, onLongClick = { menu = true }) {
                     TransferImage(context, api, profile, TransferPreview(download.id, download.name, asset = download.asset), false, it)
                 }
-                DropdownMenu(menu, { menu = false }) {
+                DropdownMenu(menu, { menu = false }, shape = AppShapes.group) {
                     DropdownMenuItem(text = { Text(download.phase) }, enabled = false, onClick = {})
 
                 }
@@ -169,7 +168,7 @@ private fun TransferHeader(title: String, progress: Float, speed: String, expand
 @Composable
 private fun TransferPhotoTile(name: String, status: String, id: String, onClick: () -> Unit, onLongClick: () -> Unit,
     image: @Composable (Modifier) -> Unit) {
-    Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp)).testTag("transfers.photo.$id")
+    Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(AppShapes.photo).testTag("transfers.photo.$id")
         .combinedClickable(onClick = onClick, onLongClick = onLongClick)
         .semantics(mergeDescendants = true) { contentDescription = name; stateDescription = status }) { image(Modifier.fillMaxSize()) }
 }

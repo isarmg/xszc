@@ -153,6 +153,7 @@ struct TransfersScreen: View {
   ) -> some View {
     image(source, preview: false)
       .frame(width: side, height: side).clipped()
+      .clipShape(AppShapes.photo)
       .contentShape(Rectangle())
       .onTapGesture {
         guard !isPinching else { return }

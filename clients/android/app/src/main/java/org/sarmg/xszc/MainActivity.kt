@@ -182,7 +182,7 @@ private fun SettingsScreen(context: Context, config: SecureConfig, onLogin: () -
             SettingsGroup("浏览缓存") {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).heightIn(min = 52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("磁盘缓存：$cacheLimit MiB", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                    Surface(shape = AppShapes.compact, color = MaterialTheme.colorScheme.secondaryContainer) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(enabled = cacheLimit > 64, onClick = { cacheLimit -= 64; RemoteImageCache.setLimit(context, cacheLimit) }, modifier = Modifier.size(40.dp).testTag("settings.cache.decrease")) { Text("−", style = MaterialTheme.typography.titleLarge) }
                             Box(Modifier.width(1.dp).height(18.dp).background(MaterialTheme.colorScheme.outlineVariant))

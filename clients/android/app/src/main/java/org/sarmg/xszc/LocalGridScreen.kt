@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -269,11 +268,14 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
                         val checked = entry.id in selection
                         val status = row?.optString("backup_state") ?: "unknown"
                         val badge = when (status) { "complete" -> "✓"; "queued", "uploading" -> "↑"; "failed", "original_complete" -> "!"; else -> null }
-                        Box(Modifier.fillMaxWidth().testTag("gallery.photo.${entry.id}").aspectRatio(1f).clip(RoundedCornerShape(8.dp))
-                            .border(if (checked) 2.dp else 0.dp, if (checked) MaterialTheme.colorScheme.primary else Color.Transparent, RoundedCornerShape(8.dp))
+                        Box(Modifier.fillMaxWidth().testTag("gallery.photo.${entry.id}").aspectRatio(1f)
                             .combinedClickable(onClick = { openEntry(entry) }, onLongClick = { if (!checked) openEntry(entry, select = true) else selecting = true })
                             .semantics { contentDescription = "${if (entry.kind == "video") "视频" else "照片"}，${entry.name}" }) {
-                            LocalMediaImage(context, entry.id, entry.name, entry.kind, entry.modified, false, Modifier.fillMaxSize(), thumbnailSize)
+                            // Only the image is clipped; corner badges keep their full visible area.
+                            LocalMediaImage(context, entry.id, entry.name, entry.kind, entry.modified, false,
+                                Modifier.fillMaxSize().clip(AppShapes.photo)
+                                    .border(if (checked) 2.dp else 0.dp, if (checked) MaterialTheme.colorScheme.primary else Color.Transparent, AppShapes.photo),
+                                thumbnailSize)
                             if (entry.kind == "video") Text("▶", Modifier.align(Alignment.BottomStart).padding(5.dp)
                                 .background(Color.Black.copy(alpha = 0.6f), CircleShape).padding(horizontal = 7.dp, vertical = 3.dp),
                                 color = Color.White, style = MaterialTheme.typography.labelSmall)
@@ -293,7 +295,7 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
         Row(Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box {
                 GalleryToolbarButton("筛选", enabled = !busy, onClick = { menu = true }, modifier = Modifier.testTag("gallery.filter"))
-                DropdownMenu(menu, { menu = false }) {
+                DropdownMenu(menu, { menu = false }, shape = AppShapes.group) {
                     DropdownMenuItem(text = { Text("全部相册") }, onClick = { album = null; menu = false; load() })
                     albums.forEach { (id, name) -> DropdownMenuItem(text = { Text(name) }, onClick = { album = id; menu = false; load() }) }
                     HorizontalDivider()
@@ -329,7 +331,7 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
                     ZoomablePhotoFrame(onTap = { setPreview(null) }, onLongPress = { previewMenu = true }) { imageModifier ->
                         LocalImage(context, row, true, imageModifier)
                     }
-                    DropdownMenu(expanded = previewMenu, onDismissRequest = { previewMenu = false }) {
+                    DropdownMenu(expanded = previewMenu, onDismissRequest = { previewMenu = false }, shape = AppShapes.group) {
                         DropdownMenuItem(text = { Text(if (row.getString("source_id") in selection) "取消选择" else "选择备份") }, onClick = {
                             previewMenu = false; selecting = true; toggle(row); setPreview(null)
                         })

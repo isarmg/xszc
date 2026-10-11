@@ -229,13 +229,13 @@ struct CloudGalleryScreen: View {
                     }
             }
         }
+        .clipShape(AppShapes.photo)
         .overlay(alignment: .bottomLeading) {
             if asset.mediaKind == "video" {
                 Image(systemName: "video.fill").font(.caption).foregroundStyle(.white)
                     .padding(6).background(.black.opacity(0.55), in: Capsule()).padding(5)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(alignment: .topTrailing) {
             if isSelecting {
                 GeometryReader { proxy in

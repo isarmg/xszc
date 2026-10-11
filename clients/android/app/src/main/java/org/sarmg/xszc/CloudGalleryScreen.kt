@@ -10,7 +10,6 @@ import android.graphics.Bitmap
 import android.os.Build
 import androidx.compose.foundation.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -263,13 +262,14 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
                     }
                     items(group, key = { it.value.id }) { indexed ->
                         val asset = indexed.value; val checked = asset.id in selection
-                        Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(8.dp))
-                            .then(if (checked) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)) else Modifier)
+                        Box(Modifier.fillMaxWidth().aspectRatio(1f)
                             .testTag("cloud.photo.${asset.id}")
                             .combinedClickable(onClick = { if (selecting) toggle(asset) else selected = indexed.index },
                                 onLongClick = { selecting = true; if (!checked) toggle(asset) })
                             .semantics { contentDescription = "${if (asset.mediaKind == "video") "视频" else "照片"}，${asset.resources.firstOrNull { it.role == "primary" }?.filename ?: "未命名媒体"}" }) {
-                            RemoteImage(context, api, profile, asset, false, Modifier.fillMaxSize())
+                            // Clipping and selection outline share the image layer, below its badges.
+                            RemoteImage(context, api, profile, asset, false, Modifier.fillMaxSize().clip(AppShapes.photo)
+                                .then(if (checked) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, AppShapes.photo) else Modifier))
                             if (asset.mediaKind == "video") Text("▶", Modifier.align(Alignment.BottomStart).padding(5.dp)
                                 .background(Color.Black.copy(alpha = 0.6f), CircleShape).padding(horizontal = 7.dp, vertical = 3.dp),
                                 color = Color.White, style = MaterialTheme.typography.labelSmall)
@@ -287,7 +287,7 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
         Row(Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box {
                 GalleryToolbarButton("筛选", onClick = { filterMenu = "root" }, enabled = !selectingAll, modifier = Modifier.testTag("cloud.filter"))
-                DropdownMenu(filterMenu != null, { filterMenu = null }) {
+                DropdownMenu(filterMenu != null, { filterMenu = null }, shape = AppShapes.group) {
                     if (filterMenu != "root") DropdownMenuItem(text = { Text("‹ 返回") }, onClick = { filterMenu = "root" })
                     when (filterMenu) {
                         "root" -> {
@@ -324,7 +324,7 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
             } else {
                 Box {
                     GalleryToolbarButton("更多", onClick = { optionsMenu = true })
-                    DropdownMenu(optionsMenu, { optionsMenu = false }) {
+                    DropdownMenu(optionsMenu, { optionsMenu = false }, shape = AppShapes.group) {
                         DropdownMenuItem(text = { Text(if (trash) "返回云端" else "打开回收站") }, onClick = { optionsMenu = false; trash = !trash; resetSelection(end = true); load(true) })
                         DropdownMenuItem(text = { Text("查看重复项") }, onClick = {
                             optionsMenu = false
@@ -349,7 +349,7 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
     if (dateRange) {
         val state = rememberDateRangePickerState(initialSelectedStartDateMillis = pickerDate(filters.from),
             initialSelectedEndDateMillis = pickerDate(filters.to, exclusiveEnd = true))
-        DatePickerDialog(onDismissRequest = { dateRange = false }, confirmButton = {
+        DatePickerDialog(onDismissRequest = { dateRange = false }, shape = AppShapes.dialog, confirmButton = {
             TextButton(shape = AppShapes.control, enabled = state.selectedStartDateMillis != null && state.selectedEndDateMillis != null, onClick = {
                 filters = filters.copy(from = cloudDateBoundary(state.selectedStartDateMillis!!),
                     to = cloudDateBoundary(state.selectedEndDateMillis!!, endInclusive = true))
@@ -391,14 +391,14 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
         }
     }
     duplicateGroups?.let { groups ->
-        ModalBottomSheet(onDismissRequest = { duplicateGroups = null }) {
+        ModalBottomSheet(onDismissRequest = { duplicateGroups = null }, shape = AppShapes.sheet) {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("重复项", style = MaterialTheme.typography.titleLarge)
                 if (groups.length() == 0) Text("没有检测到内容相同的媒体。")
                 for (index in 0 until groups.length()) {
                     val group = groups.getJSONObject(index)
                     val members = group.getJSONArray("assets")
-                    ElevatedCard(Modifier.fillMaxWidth()) {
+                    ElevatedCard(Modifier.fillMaxWidth(), shape = AppShapes.group) {
                         Column(Modifier.padding(12.dp)) {
                             Text("第 ${index + 1} 组 · ${members.length()} 项", style = MaterialTheme.typography.titleMedium)
                             Text("${group.getLong("content_size")} 字节", style = MaterialTheme.typography.bodySmall)
@@ -472,7 +472,7 @@ internal fun PhotoViewerScreen(context: Context, api: BackupApi, profile: String
                     TextButton(shape = AppShapes.control, onClick = { menu = true }) { Text("更多") }
                 }
             }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = AppShapes.group) {
                 DropdownMenuItem(text = { Text("保存到手机") }, onClick = { menu = false; onSave(current) })
                 DropdownMenuItem(text = { Text(if (current.favorite) "取消收藏" else "收藏") }, onClick = { menu = false; onFavorite(current) })
                 DropdownMenuItem(text = { Text(if (current.archived) "取消归档" else "归档") }, onClick = { menu = false; onAction(current, "archive", "") })
@@ -483,11 +483,11 @@ internal fun PhotoViewerScreen(context: Context, api: BackupApi, profile: String
                 DropdownMenuItem(text = { Text(if (current.trashed) "恢复照片" else "移入回收站") }, onClick = { menu = false; onAction(current, "trash", "") })
                 if (current.trashed) DropdownMenuItem(text = { Text("永久删除") }, onClick = { menu = false; confirmingDelete = true })
             }
-            if (addingTag) AlertDialog(onDismissRequest = { addingTag = false }, title = { Text("添加标签") },
+            if (addingTag) AlertDialog(onDismissRequest = { addingTag = false }, shape = AppShapes.dialog, title = { Text("添加标签") },
                 text = { OutlinedTextField(tag, { tag = it }, label = { Text("标签名称") }, singleLine = true) },
                 confirmButton = { TextButton(shape = AppShapes.control, enabled = tag.isNotBlank(), onClick = { addingTag = false; onAction(current, "tag", tag.trim()) }) { Text("添加") } },
                 dismissButton = { TextButton(shape = AppShapes.control, onClick = { addingTag = false }) { Text("取消") } })
-            if (confirmingDelete) AlertDialog(onDismissRequest = { confirmingDelete = false }, title = { Text("永久删除照片？") },
+            if (confirmingDelete) AlertDialog(onDismissRequest = { confirmingDelete = false }, shape = AppShapes.dialog, title = { Text("永久删除照片？") },
                 text = { Text("此操作无法撤销。服务器可能在后台继续回收未引用的文件。") },
                 confirmButton = { TextButton(shape = AppShapes.control, onClick = { confirmingDelete = false; onAction(current, "delete", "") }) { Text("永久删除") } },
                 dismissButton = { TextButton(shape = AppShapes.control, onClick = { confirmingDelete = false }) { Text("取消") } })

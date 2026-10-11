@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -24,11 +24,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Dp
 
 internal object AppShapes {
+    // Nominal radii follow the SwiftUI client roles. IosLikeCornerShape adds smooth shoulders;
+    // equal pt/dp values alone do not establish a visual match to the native iOS renderer.
     val control = CircleShape
-    val dialog = RoundedCornerShape(46.dp)
-    val field = RoundedCornerShape(26.dp)
-    val group = RoundedCornerShape(20.dp)
-    val photo = RoundedCornerShape(8.dp)
+    val dialog = IosLikeCornerShape(CornerSize(36.dp))
+    // Account fields are 52 dp tall, so 26 dp already reaches their half-height.
+    val field = IosLikeCornerShape(CornerSize(26.dp))
+    val group = IosLikeCornerShape(CornerSize(28.dp))
+    val notification = IosLikeCornerShape(CornerSize(32.dp))
+    val photo = IosLikeCornerShape(CornerSize(25))
+    val compact = IosLikeCornerShape(CornerSize(10.dp))
+    val sheet = group.copy(bottomEnd = CornerSize(0.dp), bottomStart = CornerSize(0.dp))
 }
 
 @Composable
@@ -63,7 +69,9 @@ internal fun AppTheme(content: @Composable () -> Unit) {
         titleMedium = androidx.compose.ui.text.TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
         titleLarge = androidx.compose.ui.text.TextStyle(fontSize = 20.sp, lineHeight = 25.sp, fontWeight = FontWeight.SemiBold),
     )
-    MaterialTheme(colorScheme = colors, typography = typography, content = content)
+    val shapes = Shapes(extraSmall = AppShapes.compact, small = AppShapes.compact,
+        medium = AppShapes.group, large = AppShapes.group, extraLarge = AppShapes.dialog)
+    MaterialTheme(colorScheme = colors, typography = typography, shapes = shapes, content = content)
 }
 
 @Composable
