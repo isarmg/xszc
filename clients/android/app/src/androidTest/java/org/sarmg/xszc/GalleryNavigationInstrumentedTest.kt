@@ -47,15 +47,12 @@ class GalleryNavigationInstrumentedTest {
 
     @Before fun seedGallery() {
         repeat(40) { photos += insertPhoto(it) }
-        var lastSemanticsFailure: Throwable? = null
         try {
             compose.waitUntil(30_000) {
-                runCatching { compose.onAllNodes(hasTestTagPrefix("gallery.photo.")).fetchSemanticsNodes().isNotEmpty() }
-                    .onFailure { lastSemanticsFailure = it }.getOrDefault(false)
+                compose.onAllNodes(hasTestTagPrefix("gallery.photo.")).fetchSemanticsNodes().isNotEmpty()
             }
-        } catch (failure: ComposeTimeoutException) {
-            // Keep the original failure and report the observation that the polling condition hid.
-            lastSemanticsFailure?.let { failure.addSuppressed(it) }
+        } catch (failure: Throwable) {
+            // Add diagnostics without replacing a layout exception with a polling timeout.
             runCatching {
                 // The collection overload defaults to depth zero, which hides the gallery's
                 // count, loading/error state, selected tab and all of its media nodes.
