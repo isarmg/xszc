@@ -87,12 +87,17 @@ class AlbumSyncBatchInstrumentedTest {
             assertEquals(requests == 1, JSONObject(buffer.readUtf8()).getBoolean("replace_members"))
             Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
                 .code(if (requests == 2) 503 else 200).message("Synthetic album response")
+                .header("Retry-After", "2")
                 .body("{}".toResponseBody()).build()
         }.build()
-        assertThrows(IllegalStateException::class.java) {
+        val failure = assertThrows(UploadHttpFailure::class.java) {
             BackupApi("https://backup.example.test", "test-token", client)
                 .syncAlbum("album", "Camera", assets(), true)
         }
+        assertEquals(503, failure.status)
+        assertEquals("http_503", failure.code)
+        assertTrue(failure.retryable)
+        assertEquals(2_000L, failure.retryAfterMs)
         assertEquals(2, requests)
     }
 }

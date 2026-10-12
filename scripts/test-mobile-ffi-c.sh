@@ -13,15 +13,17 @@ cc -std=c17 -Wall -Wextra -Werror -I crates/mobile-ffi/include \
   -Wl,-rpath,"$target_dir/debug" -o "$scratch/abi"
 scratch="$(cd "$scratch" && pwd -P)"
 if [[ "$(uname -s)" == Darwin ]]; then
-  mkdir -m 700 "$scratch/container"
+  # Both probes create client-v1.sqlite. Keep the ABI probe fresh so its
+  # rejected revision must leave no database behind.
+  mkdir -m 700 "$scratch/core-container" "$scratch/ffi-container"
   cat > "$scratch/test.sb" <<EOF
 (version 1)
 (allow default)
 (deny file-read* (literal "$scratch"))
 EOF
   cargo build --locked -p xszc-core --example sandbox_database
-  sandbox-exec -f "$scratch/test.sb" "$target_dir/debug/examples/sandbox_database" "$scratch/container"
-  sandbox-exec -f "$scratch/test.sb" "$scratch/abi" "$scratch/container"
+  sandbox-exec -f "$scratch/test.sb" "$target_dir/debug/examples/sandbox_database" "$scratch/core-container"
+  sandbox-exec -f "$scratch/test.sb" "$scratch/abi" "$scratch/ffi-container"
 else
   "$scratch/abi" "$scratch"
 fi
