@@ -15,6 +15,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.*
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -256,6 +260,37 @@ class CloudGalleryInstrumentedTest {
             compose.runOnIdle { gate.complete(Unit) }
             compose.waitUntil(5000) { DownloadTransfers.rows.value.any { it.profile == profile && it.isCompleted } }
         } finally { queue.cancelPending(); workerScope.cancel(); DownloadTransfers.rows.value = DownloadTransfers.rows.value.filterNot { it.profile == profile } }
+    }
+
+    @Test fun tagLimitErrorIsVisibleInsidePreviewAndRetryKeepsInput() {
+        val fixture = cloudFixture(0).copy(tagNames = (1..15).map { "tag-$it" })
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            val listing = request.method == "GET"
+            Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
+                .code(if (listing) 200 else 400).message("Tag fixture")
+                .body((if (listing) """[{"tag_id":"existing","name":"newtag"}]"""
+                    else """{"code":"bad_request","message":"asset cannot have more than 16 tags","retryable":false}""").toResponseBody()).build()
+        }.build()
+        val source = object : CloudGallerySource {
+            override val api = BackupApi("https://backup.example.test", "fixture-token", client)
+            override suspend fun page(cursor: String?, trash: Boolean, favorite: Boolean,
+                album: String?, filters: CloudFilters) = RemoteLibrary.Page(listOf(fixture), null)
+        }
+        show(source)
+        compose.onNodeWithTag("cloud.photo.fixture-0").performClick()
+        val preview = compose.onNodeWithContentDescription("照片预览，点按关闭，双指缩放")
+        preview.performTouchInput { longClick() }
+        compose.onNodeWithText("添加标签").performClick()
+        compose.onNode(hasSetTextAction()).performTextInput("newtag")
+        compose.onNodeWithText("添加", useUnmergedTree = true).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("操作失败").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("每项媒体最多添加16个标签，请先移除一个标签").assertIsDisplayed()
+        compose.onNodeWithText("知道了").performClick()
+        preview.assertIsDisplayed()
+        preview.performTouchInput { longClick() }
+        compose.onNodeWithText("添加标签").performClick()
+        compose.onNode(hasSetTextAction()).assertTextContains("newtag")
     }
 
 }

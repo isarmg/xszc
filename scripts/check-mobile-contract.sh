@@ -107,6 +107,7 @@ PYIOS
 
 # Source-backed preview fallback checks; native UI execution is a separate gate.
 python3 scripts/test-cloud-preview-fallback.py
+python3 scripts/test-ios-gallery-metadata.py
 
 # Filter metadata follows each first-page refresh; native UI coverage is in CloudGalleryInstrumentedTest.
 python3 - <<'PYMETADATA'

@@ -252,14 +252,18 @@ final class BackupCoordinator: ObservableObject {
         do {
             let connection = try await remoteLibrary()
             let page = try await connection.loadTimelinePage(cursor: cursor, trashed: trash, favorite: favorite, albumId: album, filters: filters, store: cacheStore)
-            let albums = first ? (try? await connection.albums()) : nil
             guard identity == profile, generation == libraryGeneration else { return }
-            if let albums { remoteAlbums = albums }
             if let next = page.nextCursor, !seenCursors.insert(next).inserted { throw RemoteLibraryError.invalidCursor }
             var ids = Set(remoteAssets.map(\.id))
             remoteAssets.append(contentsOf: page.items.filter { ids.insert($0.id).inserted })
             nextCursor = page.nextCursor; library = connection; libraryError = nil
             status = "\(page.cached ? "离线缓存 · " : "")已加载 \(remoteAssets.count) 项云端媒体"
+            if first { Task {
+                // Optional filter metadata must not hold a successful page or its loading state.
+                guard let albums = try? await connection.albums(),
+                    identity == profile, generation == libraryGeneration else { return }
+                remoteAlbums = albums
+            } }
         } catch { if identity == profile && generation == libraryGeneration {
             libraryError = error.localizedDescription; status = error.localizedDescription
         } }
@@ -388,9 +392,12 @@ final class BackupCoordinator: ObservableObject {
         do { try await remoteLibrary().setArchived(asset: asset, value: !asset.archived); await refreshLibrary() }
         catch { status = error.localizedDescription }
     }
-    func addTag(_ asset: RemoteAsset) async {
-        do { try await remoteLibrary().addTag(named: newTagName, to: asset); await refreshLibrary() }
-        catch { status = error.localizedDescription }
+    func addTag(_ asset: RemoteAsset) async -> Bool {
+        do {
+            try await remoteLibrary().addTag(named: newTagName, to: asset)
+            await refreshLibrary()
+            return true
+        } catch { status = error.localizedDescription; return false }
     }
     func removeTag(_ name: String, from asset: RemoteAsset) async {
         do { try await remoteLibrary().removeTag(named: name, from: asset); await refreshLibrary() }

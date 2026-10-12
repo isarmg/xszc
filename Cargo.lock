@@ -1695,7 +1695,7 @@ dependencies = [
 
 [[package]]
 name = "xszc-core"
-version = "1.1.3"
+version = "1.1.4"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1717,7 +1717,7 @@ dependencies = [
 
 [[package]]
 name = "xszc-crypto"
-version = "1.1.3"
+version = "1.1.4"
 dependencies = [
  "blake3",
  "thiserror",
@@ -1726,7 +1726,7 @@ dependencies = [
 
 [[package]]
 name = "xszc-mobile"
-version = "1.1.3"
+version = "1.1.4"
 dependencies = [
  "jni",
  "serde_json",

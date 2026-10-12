@@ -154,6 +154,16 @@ class BackupApi(
         JSONObject().put("name", name).toString(),
     )
 
+    fun addTag(asset: RemoteAsset, rawName: String) {
+        val name = rawName.trim()
+        if (name.isEmpty()) return
+        check(name in asset.tagNames || asset.tagNames.size < RemoteAsset.MAX_TAGS) { "每项媒体最多添加16个标签，请先移除一个标签" }
+        val tags = listTags()
+        val tag = (0 until tags.length()).map(tags::getJSONObject)
+            .firstOrNull { it.getString("name") == name } ?: createTag(name)
+        addTagAsset(tag.getString("tag_id"), asset.id)
+    }
+
     fun addTagAsset(tagId: String, assetId: String) {
         jsonRequest("$serverUrl/v1/tags/$tagId/assets/$assetId", "POST", "{}", expectJson = false)
     }
@@ -228,6 +238,9 @@ class BackupApi(
             val text = it.body.string()
             if (it.code == 409 && runCatching { JSONObject(text).optString("code") }.getOrNull() == "upload_superseded") {
                 throw UploadSupersededException()
+            }
+            if (it.code == 400 && runCatching { JSONObject(text).optString("message") }.getOrNull() == "asset cannot have more than 16 tags") {
+                error("每项媒体最多添加16个标签，请先移除一个标签")
             }
             if (!it.isSuccessful) error("服务端请求失败: ${it.code}")
             return if (expectJson && text.isNotBlank()) JSONObject(text) else JSONObject()

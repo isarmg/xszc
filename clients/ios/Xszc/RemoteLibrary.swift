@@ -19,6 +19,7 @@ struct RemoteResource: Decodable, Identifiable {
 }
 
 struct RemoteAsset: Decodable, Identifiable {
+    static let maximumTags = 16
     let assetId: UUID
     let sourceAssetId: String
     let mediaKind: String
@@ -63,6 +64,7 @@ private struct ResourceIntegrity: Decodable {
 struct RemoteLibrary {
     let serverURL: URL
     let token: String
+    var session = SecureSession.shared
 
     private let decoder: JSONDecoder = {
         let value = JSONDecoder()
@@ -80,7 +82,7 @@ struct RemoteLibrary {
         let key = components?.queryItems?.filter { $0.name != "cursor" }.map { "\($0.name)=\($0.value ?? "")" }.joined(separator: "&") ?? ""
         guard let url = components?.url else { throw RemoteLibraryError.invalidURL }
         do {
-            let (data, response) = try await SecureSession.shared.data(for: authorized(url: url, method: "GET"))
+            let (data, response) = try await session.data(for: authorized(url: url, method: "GET"))
             try requireSuccess(response)
             let page = try decoder.decode(TimelinePage.self, from: data)
             guard let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -99,7 +101,7 @@ struct RemoteLibrary {
     }
 
     func json(_ path: String, allowMissing: Bool = false) async throws -> Any? {
-        let (data, response) = try await SecureSession.shared.data(for: authorized(url: SecureSession.resolve(path, base: serverURL), method: "GET"))
+        let (data, response) = try await session.data(for: authorized(url: SecureSession.resolve(path, base: serverURL), method: "GET"))
         if allowMissing, (response as? HTTPURLResponse)?.statusCode == 404 { return nil }
         try requireSuccess(response)
         return try JSONSerialization.jsonObject(with: data)
@@ -110,7 +112,7 @@ struct RemoteLibrary {
     }
 
     func albums() async throws -> [RemoteAlbum] {
-        let (data, response) = try await SecureSession.shared.data(for: authorized(url: serverURL.appending(path: "/v1/albums"), method: "GET"))
+        let (data, response) = try await session.data(for: authorized(url: serverURL.appending(path: "/v1/albums"), method: "GET"))
         try requireSuccess(response)
         return try decoder.decode([RemoteAlbum].self, from: data)
     }
@@ -131,20 +133,23 @@ struct RemoteLibrary {
     func addTag(named rawName: String, to asset: RemoteAsset) async throws {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
-        let (listData, listResponse) = try await SecureSession.shared.data(for: authorized(
+        guard asset.tagNames.contains(name) || asset.tagNames.count < RemoteAsset.maximumTags else {
+            throw RemoteLibraryError.server("每项媒体最多添加16个标签，请先移除一个标签")
+        }
+        let (listData, listResponse) = try await session.data(for: authorized(
             url: serverURL.appending(path: "/v1/tags"),
             method: "GET"
         ))
         try requireSuccess(listResponse)
         let tags = try decoder.decode([RemoteTag].self, from: listData)
         let tag: RemoteTag
-        if let existing = tags.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+        if let existing = tags.first(where: { $0.name == name }) {
             tag = existing
         } else {
             var request = try authorized(url: serverURL.appending(path: "/v1/tags"), method: "POST")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["name": name])
-            let (data, response) = try await SecureSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             try requireSuccess(response)
             tag = try decoder.decode(RemoteTag.self, from: data)
         }
@@ -152,7 +157,7 @@ struct RemoteLibrary {
     }
 
     func removeTag(named name: String, from asset: RemoteAsset) async throws {
-        let (data, response) = try await SecureSession.shared.data(for: authorized(
+        let (data, response) = try await session.data(for: authorized(
             url: serverURL.appending(path: "/v1/tags"), method: "GET"
         ))
         try requireSuccess(response)
@@ -164,7 +169,7 @@ struct RemoteLibrary {
     }
 
     func duplicateGroups() async throws -> [DuplicateGroup] {
-        let (data, response) = try await SecureSession.shared.data(for: authorized(
+        let (data, response) = try await session.data(for: authorized(
             url: serverURL.appending(path: "/v1/duplicates"),
             method: "GET"
         ))
@@ -198,7 +203,7 @@ struct RemoteLibrary {
 
     func restoreToPhotos(asset: RemoteAsset, progress: ((Int64) -> Void)? = nil) async throws -> String {
         guard let resource = asset.primary else { throw RemoteLibraryError.noPrimaryResource }
-        let (manifestData, manifestResponse) = try await SecureSession.shared.data(for: authorized(
+        let (manifestData, manifestResponse) = try await session.data(for: authorized(
             url: serverURL.appending(path: "/v1/resources/\(resource.id)"), method: "GET"))
         try requireSuccess(manifestResponse)
         let integrity = try decoder.decode(ResourceIntegrity.self, from: manifestData)
@@ -241,15 +246,15 @@ struct RemoteLibrary {
         var request = try authorized(url: serverURL.appending(path: path), method: method)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data("{}".utf8)
-        let (_, response) = try await SecureSession.shared.data(for: request)
-        try requireSuccess(response)
+        let (data, response) = try await session.data(for: request)
+        try requireSuccess(response, data: data)
     }
 
     private func sendJSON(path: String, method: String, body: [String: Any]) async throws {
         var request = try authorized(url: serverURL.appending(path: path), method: method)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, response) = try await SecureSession.shared.data(for: request)
+        let (_, response) = try await session.data(for: request)
         try requireSuccess(response)
     }
 
@@ -261,8 +266,13 @@ struct RemoteLibrary {
         return request
     }
 
-    private func requireSuccess(_ response: URLResponse) throws {
+    private func requireSuccess(_ response: URLResponse, data: Data? = nil) throws {
         guard let http = response as? HTTPURLResponse else { throw RemoteLibraryError.server("服务器响应无效") }
+        if http.statusCode == 400, let data,
+            let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            body["message"] as? String == "asset cannot have more than 16 tags" {
+            throw RemoteLibraryError.server("每项媒体最多添加16个标签，请先移除一个标签")
+        }
         guard (200..<300).contains(http.statusCode) else {
             throw RemoteLibraryError.server("服务器请求失败（HTTP \(http.statusCode)）")
         }
