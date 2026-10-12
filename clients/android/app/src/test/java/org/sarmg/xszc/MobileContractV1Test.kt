@@ -9,13 +9,14 @@ import org.junit.Test
 class MobileContractV1Test {
     @Test
     fun currentEpochUsesDeclaredSandboxPaths() {
-        val sandbox = Files.createTempDirectory("media-mobile-v02-sandbox-").toFile()
+        val sandbox = Files.createTempDirectory("media-mobile-revision2-sandbox-").toFile()
         try {
             val currentDatabase = File(sandbox, MobileContractV1.DATABASE_FILENAME)
             val currentStaging = File(sandbox, MobileContractV1.STAGING_DIRECTORY)
             currentDatabase.writeText("current sqlite bytes")
             assertTrue(currentStaging.mkdir())
 
+            assertEquals(2, MobileContractV1.REVISION)
             assertEquals("client-v1.sqlite", currentDatabase.name)
             assertEquals("backup-staging-v1", currentStaging.name)
             assertEquals(sandbox.canonicalFile, currentDatabase.parentFile.canonicalFile)

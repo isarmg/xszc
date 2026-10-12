@@ -5,11 +5,15 @@ struct CloudFilters: Equatable {
     var from: Int64?
     var to: Int64?
     var device: String?
+    var archived: Bool?
+    var tag: String?
     var queryItems: [URLQueryItem] {
         [kind.map { URLQueryItem(name: "media_kind", value: $0) },
          from.map { URLQueryItem(name: "from_ms", value: String($0)) },
          to.map { URLQueryItem(name: "to_ms", value: String($0)) },
-         device.map { URLQueryItem(name: "device_id", value: $0) }].compactMap { $0 }
+         device.map { URLQueryItem(name: "device_id", value: $0) },
+         archived.map { URLQueryItem(name: "archived", value: String($0)) },
+         tag.map { URLQueryItem(name: "tag_id", value: $0) }].compactMap { $0 }
     }
 }
 struct RemoteDevice: Identifiable { let id: String; let name: String }

@@ -580,6 +580,53 @@ fn cancellation_only_removes_one_reference_and_automatic_work_survives() {
     client.enqueue(resource(&source, None)).unwrap();
     assert_eq!(active(), json!(true));
 }
+
+#[test]
+fn queue_selection_preserves_active_batch_retry_and_automatic_ownership() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo");
+    fs::write(&source, b"12345678").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    let a = batch(&client);
+    let b = batch(&client);
+    let id = client.enqueue(resource(&source, Some(&a))).unwrap();
+    assert_eq!(id, client.enqueue(resource(&source, Some(&b))).unwrap());
+    client
+        .transfer(request(json!({"op":"cancel_batch","batch_id":a})))
+        .unwrap();
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    let first = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(first.job_id, id);
+    client
+        .mark_failed(&id, "network interrupted", true)
+        .unwrap();
+    // Fix the fixture deadline far ahead, independent of slow CI scheduling.
+    client
+        .lock_connection()
+        .unwrap()
+        .execute(
+            "UPDATE jobs SET next_retry_ms=?2 WHERE id=?1",
+            params![id, now_ms() + 3_600_000],
+        )
+        .unwrap();
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    client
+        .transfer(request(json!({"op":"retry_batch","batch_id":b})))
+        .unwrap();
+    let retried = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(retried.job_id, id);
+    assert_eq!(retried.generation_id, first.generation_id);
+    client
+        .transfer(request(json!({"op":"cancel_batch","batch_id":b})))
+        .unwrap();
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    // Automatic ownership remains usable even when all manual batches cancel.
+    assert_eq!(client.enqueue(resource(&source, None)).unwrap(), id);
+    let automatic = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(automatic.generation_id, first.generation_id);
+    assert_eq!(fs::read(&source).unwrap(), b"12345678");
+}
+
 #[test]
 fn retry_reuses_prepared_parts_even_after_private_source_is_removed() {
     let root = tempfile::tempdir().unwrap();
@@ -906,4 +953,127 @@ fn audit_interrupted_upload_requires_failure_transition_on_same_client() {
     assert_eq!(resumed.generation_id, prepared.generation_id);
     assert_eq!(fs::read(&source).unwrap(), b"12345678");
     println!("AUDIT_IOS_CANCEL_CACHED_CLIENT: uploading skipped after retry; mark_failed restores identical generation");
+}
+
+#[test]
+fn http_failures_persist_server_wait_and_permanent_jobs_require_manual_retry() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo.jpg");
+    fs::write(&source, b"12345678").unwrap();
+    let db = root.path().join("client.sqlite");
+    let client = Client::open(&db, config()).unwrap();
+    let selected = batch(&client);
+    let id = client.enqueue(resource(&source, Some(&selected))).unwrap();
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    let generation = client
+        .next_prepared(&staging)
+        .unwrap()
+        .unwrap()
+        .generation_id;
+    let before = now_ms();
+    client.transfer(request(json!({"op":"fail_upload","job_id":id,"error":"429 busy","retryable":true,"retry_after_ms":120000}))).unwrap();
+    let deadline: i64 = client
+        .lock_connection()
+        .unwrap()
+        .query_row(
+            "SELECT next_retry_ms FROM jobs WHERE id=?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(deadline >= before + 120000);
+    drop(client);
+    let client = Client::open(&db, config()).unwrap();
+    assert!(
+        client.next_prepared(&staging).unwrap().is_none(),
+        "server wait survives restart"
+    );
+    client.transfer(request(json!({"op":"fail_upload","job_id":id,"error":"413 file too large","retryable":false,"retry_after_ms":120000}))).unwrap();
+    let (state, deadline): (String, i64) = client
+        .lock_connection()
+        .unwrap()
+        .query_row(
+            "SELECT state,next_retry_ms FROM jobs WHERE id=?1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((state, deadline), ("failed".into(), 0));
+    assert!(
+        client.next_prepared(&staging).unwrap().is_none(),
+        "permanent failures do not retry automatically"
+    );
+    assert!(
+        !client.needs_resource("asset", "original", 1).unwrap(),
+        "automatic scans skip a permanent rejection"
+    );
+    assert_eq!(client.enqueue(resource(&source, None)).unwrap(), id);
+    assert!(
+        client.next_prepared(&staging).unwrap().is_none(),
+        "a forced automatic enqueue cannot clear a permanent rejection"
+    );
+
+    client
+        .transfer(request(json!({"op":"retry_batch","batch_id":selected})))
+        .unwrap();
+    assert_eq!(
+        client
+            .next_prepared(&staging)
+            .unwrap()
+            .unwrap()
+            .generation_id,
+        generation,
+        "manual remedy reuses valid parts"
+    );
+}
+
+#[test]
+fn cancelling_and_restoring_a_batch_preserves_count_and_shared_automatic_work() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo.jpg");
+    fs::write(&source, b"12345678").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    let selected = Uuid::new_v4().to_string();
+    client.transfer(request(json!({"op":"create_batch","id":selected,"items":[{"id":"selected","source":"first"},{"id":"second","source":"second"}]}))).unwrap();
+    let id = client.enqueue(resource(&source, Some(&selected))).unwrap();
+    client.enqueue(resource(&source, None)).unwrap();
+    client
+        .transfer(request(json!({"op":"cancel_batch","batch_id":selected})))
+        .unwrap();
+    let rows = client.transfer(request(json!({"op":"batches"}))).unwrap();
+    assert_eq!(rows[0]["items"], 2);
+    assert_eq!(rows[0]["cancelled"], true);
+    assert!(client
+        .transfer(request(json!({"op":"items","batch_id":selected})))
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        client
+            .next_prepared(root.path().join(MOBILE_STAGING_DIRECTORY))
+            .unwrap()
+            .unwrap()
+            .job_id,
+        id,
+        "automatic owner remains active"
+    );
+    client
+        .transfer(request(json!({"op":"retry_batch","batch_id":selected})))
+        .unwrap();
+    assert_eq!(
+        client
+            .transfer(request(json!({"op":"items","batch_id":selected})))
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        client
+            .transfer(request(json!({"op":"next_pending_item"})))
+            .unwrap()["batch_id"],
+        selected
+    );
 }

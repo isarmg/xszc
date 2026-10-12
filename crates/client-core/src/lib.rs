@@ -60,7 +60,7 @@ impl ClientError {
 
 pub const MOBILE_PRODUCT: &str = "xszc";
 pub const MOBILE_APPLICATION_VERSION: &str = "1.0.0";
-pub const MOBILE_REVISION: u32 = 1;
+pub const MOBILE_REVISION: u32 = 2;
 pub const MOBILE_STATE_EPOCH: &str = "xszc-mobile-v1";
 pub const MOBILE_DATABASE_FILENAME: &str = "client-v1.sqlite";
 pub const MOBILE_STAGING_DIRECTORY: &str = "backup-staging-v1";
@@ -290,7 +290,7 @@ impl Client {
     ) -> Result<bool, ClientError> {
         let mut connection = self.lock_connection()?;
         let exists: bool = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM jobs WHERE source_asset_id = ?1 AND source_resource_id = ?2 AND modified_ms = ?3 AND (?4 IS NULL OR source_size = ?4) AND (state='complete' OR (state='failed' AND error='upload_superseded') OR ((automatic=1 OR EXISTS(SELECT 1 FROM batch_jobs r JOIN backup_batches b ON b.id=r.batch_id WHERE r.job_id=jobs.id AND b.cancelled=0)) AND state!='failed' AND NOT (state='retry_wait' AND prepared_json IS NULL))))",
+            "SELECT EXISTS(SELECT 1 FROM jobs WHERE source_asset_id = ?1 AND source_resource_id = ?2 AND modified_ms = ?3 AND (?4 IS NULL OR source_size = ?4) AND (state='complete' OR (state='failed' AND (error='upload_superseded' OR retry_blocked=1)) OR ((automatic=1 OR EXISTS(SELECT 1 FROM batch_jobs r JOIN backup_batches b ON b.id=r.batch_id WHERE r.job_id=jobs.id AND b.cancelled=0)) AND state!='failed' AND NOT (state='retry_wait' AND prepared_json IS NULL))))",
             params![source_asset_id, source_resource_id, modified_ms, source_size], |row| row.get(0),
         )?;
         Ok(!exists)
@@ -373,9 +373,9 @@ impl Client {
             "UPDATE jobs SET file_path=?2,filename=?3,mime_type=?4,
                     source_created_at_ms=?5,metadata_json=?6,
                     remove_source_after_prepare=?7,state='discovered',
-                    error=NULL,next_retry_ms=0,updated_at_ms=?8
+                    error=NULL,next_retry_ms=0,retry_blocked=0,updated_at_ms=?8
                     WHERE id=?1 AND prepared_json IS NULL AND state IN ('failed','retry_wait')
-                    AND (COALESCE(error,'')!='upload_superseded' OR ?9)",
+                    AND (COALESCE(error,'')!='upload_superseded' OR ?9) AND (retry_blocked=0 OR ?9)",
             params![
                 id,
                 input.file_path,
@@ -388,10 +388,11 @@ impl Client {
                 input.batch_id.is_some()
             ],
         )?;
-        // Re-selecting failed work retries it without discarding prepared parts.
+        // Only an explicit manual selection retries permanent failures. Automatic
+        // scans must not clear server rejections or superseded outcomes.
         tx.execute("UPDATE jobs SET state = CASE WHEN prepared_json IS NULL THEN 'discovered' ELSE 'ready' END,
-                    error = NULL, next_retry_ms = 0 WHERE id = ?1 AND state = 'failed'
-                    AND (COALESCE(error,'')!='upload_superseded' OR ?2)", params![id,input.batch_id.is_some()])?;
+                    error = NULL, next_retry_ms = 0, retry_blocked=0 WHERE id = ?1 AND state = 'failed'
+                    AND (COALESCE(error,'')!='upload_superseded' OR ?2) AND (retry_blocked=0 OR ?2)", params![id,input.batch_id.is_some()])?;
         let redundant_source = existing.as_ref().is_some_and(|(_, old_path, _, _, _)| {
             !refresh_thumbnail && old_path != &input.file_path && input.remove_source_after_prepare
         });
@@ -418,9 +419,28 @@ impl Client {
         let staging_root = staging_root.as_ref();
         loop {
             let mut connection = self.lock_connection()?;
+            // Materialize small candidate IDs once, then match only their manual
+            // jobs. Load the selected manifest after selection, avoiding both
+            // correlated scans and copying every prepared JSON into the CTE.
             let existing: Option<(String, String)> = connection
                 .query_row(
-                    "SELECT id,prepared_json FROM jobs WHERE (state = 'ready' OR (state = 'retry_wait' AND next_retry_ms <= ?1 AND prepared_json IS NOT NULL)) AND prepared_json IS NOT NULL AND (automatic = 1 OR EXISTS(SELECT 1 FROM batch_jobs r JOIN backup_batches b ON b.id = r.batch_id WHERE r.job_id = jobs.id AND b.cancelled = 0)) ORDER BY updated_at_ms LIMIT 1",
+                    r#"
+                    WITH prepared_candidates AS MATERIALIZED (
+                        SELECT id,automatic,updated_at_ms FROM jobs
+                        WHERE (state = 'ready' OR (state = 'retry_wait' AND next_retry_ms <= ?1 AND prepared_json IS NOT NULL))
+                        AND prepared_json IS NOT NULL
+                    )
+                    SELECT id,prepared_json FROM jobs WHERE id = (
+                        SELECT id FROM prepared_candidates
+                        WHERE automatic = 1 OR id IN (
+                            SELECT r.job_id FROM batch_jobs r JOIN backup_batches b ON b.id = r.batch_id
+                            WHERE b.cancelled = 0 AND r.job_id IN (
+                                SELECT id FROM prepared_candidates WHERE automatic = 0
+                            )
+                        )
+                        ORDER BY updated_at_ms LIMIT 1
+                    )
+                    "#,
                     params![now_ms()],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
@@ -459,14 +479,24 @@ impl Client {
             let row: Option<(String, EnqueueResource)> = connection
                 .query_row(
                     r#"
+                    WITH discovery_candidates AS MATERIALIZED (
+                        SELECT id,automatic,updated_at_ms
+                        FROM jobs
+                        WHERE (state = 'discovered' OR (state = 'retry_wait' AND next_retry_ms <= ?1 AND prepared_json IS NULL))
+                    )
                     SELECT id, source_asset_id, source_resource_id, media_kind, role, file_path,
                            filename, mime_type, source_created_at_ms, modified_ms, source_size,
                            metadata_json, remove_source_after_prepare
-                    FROM jobs
-                    WHERE (state = 'discovered' OR (state = 'retry_wait' AND next_retry_ms <= ?1 AND prepared_json IS NULL))
-                    AND (automatic = 1 OR EXISTS(SELECT 1 FROM batch_jobs r JOIN backup_batches b ON b.id = r.batch_id WHERE r.job_id = jobs.id AND b.cancelled = 0))
-                    ORDER BY updated_at_ms
-                    LIMIT 1
+                    FROM jobs WHERE id = (
+                        SELECT id FROM discovery_candidates
+                        WHERE automatic = 1 OR id IN (
+                            SELECT r.job_id FROM batch_jobs r JOIN backup_batches b ON b.id = r.batch_id
+                            WHERE b.cancelled = 0 AND r.job_id IN (
+                                SELECT id FROM discovery_candidates WHERE automatic = 0
+                            )
+                        )
+                        ORDER BY updated_at_ms LIMIT 1
+                    )
                     "#,
                     params![now],
                     |row| {
@@ -657,6 +687,17 @@ impl Client {
         error: &str,
         retryable: bool,
     ) -> Result<(), ClientError> {
+        self.mark_failed_with_retry_after(job_id, error, retryable, None, false)
+    }
+
+    fn mark_failed_with_retry_after(
+        &self,
+        job_id: &str,
+        error: &str,
+        retryable: bool,
+        retry_after_ms: Option<u64>,
+        block_automatic_retry: bool,
+    ) -> Result<(), ClientError> {
         let mut connection = self.lock_connection()?;
         let retries: u32 = connection
             .query_row(
@@ -668,10 +709,20 @@ impl Client {
             .ok_or(ClientError::NotFound)?;
         let state = if retryable { "retry_wait" } else { "failed" };
         let exponent = retries.min(10);
-        let delay = (2_000_i64 * (1_i64 << exponent)).min(3_600_000);
+        let backoff = (2_000_i64 * (1_i64 << exponent)).min(3_600_000);
+        let requested = retry_after_ms
+            .map(|value| i64::try_from(value).unwrap_or(i64::MAX))
+            .unwrap_or(0);
+        // A server's valid wait is a lower bound, including after process death.
+        let delay = backoff.max(requested);
+        let deadline = if retryable {
+            now_ms().saturating_add(delay)
+        } else {
+            0
+        };
         connection.execute(
-            "UPDATE jobs SET state = ?2, retry_count = retry_count + 1, next_retry_ms = ?3, error = ?4, updated_at_ms = ?5 WHERE id = ?1",
-            params![job_id, state, now_ms() + delay, error, now_ms()],
+            "UPDATE jobs SET state = ?2, retry_count = retry_count + 1, next_retry_ms = ?3, error = ?4, updated_at_ms = ?5, retry_blocked=?6 WHERE id = ?1",
+            params![job_id, state, deadline, error, now_ms(), block_automatic_retry],
         )?;
         Ok(())
     }

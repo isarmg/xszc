@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.time.Instant
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /** Only small directory records stay resident; bitmap and receipt caches are bounded. */
@@ -32,11 +32,10 @@ internal data class LocalGalleryDirectory(
 ) {
     companion object {
         fun from(rows: List<JSONObject>): LocalGalleryDirectory {
-            val zone = ZoneId.systemDefault()
             val entries = rows.map { row ->
                 val created = row.getLong("created_ms")
                 LocalGalleryEntry(row.getString("source_id"), row.getString("name"), row.getString("media_kind"),
-                    created, row.getLong("modified_ms"), Instant.ofEpochMilli(created).atZone(zone).toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE))
+                    created, row.getLong("modified_ms"), Instant.ofEpochMilli(created).atZone(ZoneOffset.UTC).toLocalDate().format(DateTimeFormatter.ISO_LOCAL_DATE))
             }
             val grid = buildList {
                 var previous: String? = null

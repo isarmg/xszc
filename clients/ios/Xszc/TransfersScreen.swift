@@ -1,4 +1,3 @@
-import ImageIO
 import SwiftUI
 
 struct TransfersScreen: View {
@@ -9,6 +8,10 @@ struct TransfersScreen: View {
   @State private var pinchStartColumns: Int?
   @GestureState private var isPinching = false
   @State private var preview: TransferPreview?
+  @State private var batchAction: TransferBatchAction?
+  @State private var pendingRestoration: TransferBatchAction?
+  @State private var cancelledBatchesVisible = false
+  @State private var clearHistory: String?
   private var displayedColumns: Int { min(8, max(1, columns)) }
   private var photos: [UploadPhoto] {
     coordinator.uploadPhotos
@@ -32,6 +35,8 @@ struct TransfersScreen: View {
           Button("继续上传", systemImage: "arrow.clockwise") {
             Task { await coordinator.runBackup(automatic: coordinator.autoBackup) }
           }.disabled(coordinator.running || coordinator.authorizationCode.isEmpty)
+          Button("已取消批次") { cancelledBatchesVisible = true }
+          Button("清除已完成手动批次记录") { clearHistory = "upload" }
         }
         if uploadsExpanded {
           ForEach(TransferGrid.rows(pendingUploads, columns: displayedColumns)) { row in
@@ -45,11 +50,12 @@ struct TransfersScreen: View {
                   Text(photo.status)
                   if let batch = photo.batchID {
                     if !photo.isCompleted {
-                      Button("重试上传", systemImage: "arrow.clockwise") {
-                        Task { await coordinator.changeBatch(batch, retry: true) }
+                      let count = coordinator.batches.first(where: { $0.id == batch })?.count ?? 0
+                      Button("重试整个批次（\(count)项）", systemImage: "arrow.clockwise") {
+                        batchAction = TransferBatchAction(id: batch, count: count, retry: true)
                       }
-                      Button("取消上传", systemImage: "xmark", role: .destructive) {
-                        Task { await coordinator.changeBatch(batch, retry: false) }
+                      Button("取消整个批次（\(count)项）", systemImage: "xmark", role: .destructive) {
+                        batchAction = TransferBatchAction(id: batch, count: count, retry: false)
                       }
                     }
                   }
@@ -63,6 +69,7 @@ struct TransfersScreen: View {
           "下载", progress: TransferProgress.download(coordinator.downloads),
           rate: coordinator.downloadRate, expanded: $downloadsExpanded
         )
+        .contextMenu { Button("清除已完成下载记录") { clearHistory = "download" } }
         if downloadsExpanded {
           ForEach(TransferGrid.rows(pendingDownloads, columns: displayedColumns)) { row in
             HStack(spacing: 3) {
@@ -106,6 +113,46 @@ struct TransfersScreen: View {
         do { try await Task.sleep(for: .seconds(2)) } catch { break }
       }
     }
+    .sheet(isPresented: $cancelledBatchesVisible, onDismiss: {
+      if let action = pendingRestoration { batchAction = action; pendingRestoration = nil }
+    }) {
+      NavigationStack {
+        List {
+          let cancelled = coordinator.batches.filter(\.cancelled)
+          if cancelled.isEmpty { Text("没有已取消批次") }
+          ForEach(cancelled) { batch in
+            Button("恢复整个批次（\(batch.count)项，\(batch.complete)项已完成）") {
+              cancelledBatchesVisible = false
+              pendingRestoration = TransferBatchAction(id: batch.id, count: batch.count, retry: true)
+            }
+          }
+        }.navigationTitle("已取消批次")
+          .toolbar { Button("关闭") { cancelledBatchesVisible = false } }
+      }
+    }
+    .alert(batchAction.map { "\($0.retry ? "重试" : "取消")整个批次（\($0.count)项）？" } ?? "批次操作",
+      isPresented: Binding(get: { batchAction != nil }, set: { if !$0 { batchAction = nil } }),
+      presenting: batchAction) { action in
+        Button("确认", role: action.retry ? nil : .destructive) {
+          batchAction = nil
+          Task { await coordinator.changeBatch(action.id, retry: action.retry) }
+        }
+        Button("返回", role: .cancel) { batchAction = nil }
+      } message: { action in
+        Text(action.retry ? "恢复此批次中未完成的项目；已完成项目不会重复上传。"
+          : "此操作影响整个批次，不只这张照片。已完成的云端文件会保留；被其他批次或自动备份使用的资源仍可继续上传。取消后可从“已取消批次”恢复。")
+      }
+    .alert(clearHistory == "upload" ? "清除已完成手动批次记录？" : "清除已完成下载记录？",
+      isPresented: Binding(get: { clearHistory != nil }, set: { if !$0 { clearHistory = nil } })) {
+        Button("清除记录") {
+          if clearHistory == "upload" { coordinator.clearCompletedUploads() }
+          else { coordinator.clearCompletedDownloads() }
+          clearHistory = nil
+        }
+        Button("返回", role: .cancel) { clearHistory = nil }
+      } message: { Text(clearHistory == "upload"
+        ? "只清除传输列表中已完成的手动批次；自动备份状态、手机和云端文件及上传回执均保留。"
+        : "只清除传输列表中的完成记录；手机和云端文件均保留。") }
     .fullScreenCover(item: Binding(get: { preview }, set: { showPreview($0) })) { photo in
       ZStack {
         Color.black.ignoresSafeArea().onTapGesture { showPreview(nil) }
@@ -176,8 +223,6 @@ struct TransfersScreen: View {
         asset: asset, library: coordinator.library, profile: coordinator.profile,
         preview: preview, onTap: preview ? { showPreview(nil) } : nil, showPlaceholderMessage: false
       )
-    case .file(let url):
-      TransferFileImage(url: url, preview: preview, onClose: { showPreview(nil) })
     case .unavailable:
       Color(uiColor: .secondarySystemBackground).overlay {
         Image(systemName: "photo").font(.title2).foregroundStyle(.tertiary)
@@ -191,6 +236,12 @@ struct TransfersScreen: View {
   }
 }
 
+private struct TransferBatchAction: Identifiable {
+  let id: String
+  let count: Int
+  let retry: Bool
+}
+
 private struct TransferPreview: Identifiable {
   let id: String
   let source: TransferPhotoSource
@@ -200,41 +251,5 @@ private struct TransferPhotoRowStyle: ViewModifier {
   func body(content: Content) -> some View {
     content.listRowBackground(Color.clear).listRowSeparator(.hidden)
       .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 3, trailing: 16))
-  }
-}
-
-private struct TransferFileImage: View {
-  let url: URL
-  let preview: Bool
-  let onClose: () -> Void
-  @State private var image: UIImage?
-  var body: some View {
-    Group {
-      if let image {
-        if preview {
-          ZoomablePhoto(image: image, onTap: onClose)
-        } else {
-          Image(uiImage: image).resizable().scaledToFill()
-        }
-      } else {
-        Color(uiColor: .secondarySystemBackground).overlay {
-          Image(systemName: "photo").foregroundStyle(.tertiary)
-        }
-      }
-    }.task(id: url) {
-      let value = await Task.detached(priority: .utility) {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-          let decoded = CGImageSourceCreateThumbnailAtIndex(
-            source, 0,
-            [
-              kCGImageSourceCreateThumbnailFromImageAlways: true,
-              kCGImageSourceCreateThumbnailWithTransform: true,
-              kCGImageSourceThumbnailMaxPixelSize: preview ? 2048 : 512,
-            ] as CFDictionary)
-        else { return UIImage?.none }
-        return UIImage(cgImage: decoded)
-      }.value
-      if !Task.isCancelled { image = value }
-    }
   }
 }

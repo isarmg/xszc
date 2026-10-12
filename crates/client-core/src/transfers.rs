@@ -33,11 +33,6 @@ pub enum TransferCommand {
         account_id: String,
         device_id: String,
     },
-    SetSource {
-        batch_id: String,
-        item_id: String,
-        source: String,
-    },
     SetItem {
         batch_id: String,
         item_id: String,
@@ -53,6 +48,12 @@ pub enum TransferCommand {
     ClearCompletedBatch {
         batch_id: String,
     },
+    FailUpload {
+        job_id: String,
+        error: String,
+        retryable: bool,
+        retry_after_ms: Option<u64>,
+    },
     Supersede {
         job_id: String,
     },
@@ -61,10 +62,6 @@ pub enum TransferCommand {
         asset_id: String,
         resource_id: String,
         content_blake3: String,
-    },
-    Alias {
-        alias: String,
-        source_id: String,
     },
     LinkResource {
         batch_id: String,
@@ -98,10 +95,27 @@ impl Client {
         if let TransferCommand::Gallery { command } = request.command {
             return self.gallery(command);
         }
+        if let TransferCommand::FailUpload {
+            job_id,
+            error,
+            retryable,
+            retry_after_ms,
+        } = request.command
+        {
+            self.mark_failed_with_retry_after(
+                &job_id,
+                &error,
+                retryable,
+                retry_after_ms,
+                !retryable,
+            )?;
+            return Ok(Value::Null);
+        }
         let mut connection = self.lock_connection()?;
         let mut tx = connection.transaction()?;
         let result = match request.command {
             TransferCommand::Gallery { .. } => unreachable!(),
+            TransferCommand::FailUpload { .. } => unreachable!(),
             TransferCommand::Binding {} => {
                 let binding: Option<(String, String, String)> = tx
                     .query_row(
@@ -180,14 +194,6 @@ impl Client {
                         "batch_id":r.get::<_,String>(0)?,"id":r.get::<_,String>(1)?,"source":r.get::<_,String>(2)?
                     }))).optional()?.unwrap_or(Value::Null)
             }
-            TransferCommand::SetSource {
-                batch_id,
-                item_id,
-                source,
-            } => {
-                tx.execute("UPDATE backup_batch_items SET source=?3,state='pending',error=NULL WHERE batch_id=?1 AND id=?2", params![batch_id,item_id,source])?;
-                Value::Null
-            }
             TransferCommand::Batches {} => {
                 let mut q = tx.prepare("SELECT b.id, b.created_at_ms, b.cancelled,
                     (SELECT COUNT(*) FROM backup_batch_items i WHERE i.batch_id=b.id),
@@ -254,7 +260,7 @@ impl Client {
                     params![batch_id],
                 )?;
                 tx.execute("UPDATE backup_batch_items SET state='pending',error=NULL WHERE batch_id=?1 AND state='blocked'", params![batch_id])?;
-                tx.execute("UPDATE jobs SET state=CASE WHEN prepared_json IS NULL THEN 'discovered' ELSE 'ready' END, next_retry_ms=0,error=NULL
+                tx.execute("UPDATE jobs SET state=CASE WHEN prepared_json IS NULL THEN 'discovered' ELSE 'ready' END, next_retry_ms=0,error=NULL,retry_blocked=0
                     WHERE state IN ('failed','retry_wait') AND id IN (SELECT job_id FROM batch_jobs WHERE batch_id=?1)", params![batch_id])?;
                 Value::Null
             }
@@ -335,18 +341,6 @@ impl Client {
                 )?;
                 Value::Null
             }
-            TransferCommand::Alias { alias, source_id } => {
-                tx.execute(
-                    "INSERT OR IGNORE INTO source_aliases(alias,source_id) VALUES (?1,?2)",
-                    params![alias, source_id],
-                )?;
-                let canonical: String = tx.query_row(
-                    "SELECT source_id FROM source_aliases WHERE alias=?1",
-                    params![alias],
-                    |r| r.get(0),
-                )?;
-                json!(canonical)
-            }
             TransferCommand::LinkResource {
                 batch_id,
                 item_id,
@@ -361,7 +355,7 @@ impl Client {
                 });
                 if let Some(id) = &id {
                     tx.execute("INSERT OR IGNORE INTO batch_jobs(batch_id,item_id,job_id) VALUES (?1,?2,?3)", params![batch_id,item_id,id])?;
-                    tx.execute("UPDATE jobs SET state='ready',error=NULL,next_retry_ms=0 WHERE id=?1 AND prepared_json IS NOT NULL AND state IN ('failed','retry_wait')", params![id])?;
+                    tx.execute("UPDATE jobs SET state='ready',error=NULL,next_retry_ms=0,retry_blocked=0 WHERE id=?1 AND prepared_json IS NOT NULL AND state IN ('failed','retry_wait')", params![id])?;
                 }
                 json!(id.is_some())
             }

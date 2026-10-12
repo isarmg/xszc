@@ -59,7 +59,7 @@ class TransfersInstrumentedTest {
         fun create(id: String, count: Int) {
             TransferStore.command(handle, "create_batch", JSONObject().put("id", id).put("items", JSONArray((0 until count).map {
                 JSONObject().put("id", if (count == 1) "selected" else "pending-$it")
-                    .put("source", JSONObject().put("uri", uri.toString()).put("name", "fixture-$it.png").toString())
+                    .put("source", JSONObject().put("uri", uri.toString()).put("source_id", uri.toString()).put("modified_ms", 1L).put("name", "fixture-$it.png").toString())
             })))
         }
         create(finished, 1)
@@ -120,5 +120,32 @@ class TransfersInstrumentedTest {
         assertEquals(2, DownloadTransfers.rows.value.count { it.profile == profile && it.isCompleted })
         compose.onNodeWithTag("transfers.row.uploads").assertDoesNotExist()
         compose.onNodeWithTag("transfers.row.downloads").assertDoesNotExist()
+
+        // One tile explicitly controls its six-item batch, with confirmation and recovery.
+        compose.onNodeWithTag("transfers.grid").performScrollToNode(hasTestTag("transfers.photo.upload.$pending.pending-1"))
+        compose.onNodeWithTag("transfers.photo.upload.$pending.pending-1").performTouchInput { longClick() }
+        compose.onNodeWithText("取消整个批次（6项）").performClick()
+        assertEquals(6, TransferStore.items(handle, pending).length())
+        compose.onNodeWithText("返回").performClick()
+        compose.onNodeWithTag("transfers.photo.upload.$pending.pending-1").performTouchInput { longClick() }
+        compose.onNodeWithText("取消整个批次（6项）").performClick()
+        compose.onNodeWithText("确认").performClick()
+        compose.waitUntil(5000) { TransferStore.items(handle, pending).length() == 0 }
+        compose.onNodeWithTag("transfers.grid").performScrollToNode(hasTestTag("transfers.upload"))
+        compose.onNodeWithTag("transfers.upload").performTouchInput { longClick() }
+        compose.onNodeWithText("已取消批次").performClick()
+        compose.onNodeWithText("恢复整个批次（6项，1项已完成）").performClick()
+        compose.onNodeWithText("确认").performClick()
+        compose.waitUntil(5000) { TransferStore.items(handle, pending).length() == 6 }
+        compose.onNodeWithTag("transfers.upload").performTouchInput { longClick() }
+        compose.onNodeWithText("清除已完成手动批次记录").performClick()
+        compose.onNodeWithText("清除记录").performClick()
+        compose.waitUntil(5000) { TransferStore.batches(handle).length() == 1 }
+        assertFalse(NativeBridgeV1.needs(handle, uri.toString(), "primary", 1)); assertTrue(file.exists())
+        compose.onNodeWithTag("transfers.grid").performScrollToNode(hasTestTag("transfers.download"))
+        compose.onNodeWithTag("transfers.download").performTouchInput { longClick() }
+        compose.onNodeWithText("清除已完成下载记录").performClick()
+        compose.onNodeWithText("清除记录").performClick()
+        assertTrue(DownloadTransfers.rows.value.none { it.profile == profile })
     }
 }

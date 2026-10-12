@@ -34,6 +34,7 @@ CREATE TABLE jobs (
     upload_id TEXT,
     retry_count INTEGER NOT NULL DEFAULT 0,
     next_retry_ms INTEGER NOT NULL DEFAULT 0,
+    retry_blocked INTEGER NOT NULL DEFAULT 0 CHECK (retry_blocked IN (0, 1)),
     error TEXT,
     updated_at_ms INTEGER NOT NULL,
     automatic INTEGER NOT NULL DEFAULT 0 CHECK (automatic IN (0, 1)),
@@ -77,11 +78,6 @@ CREATE TABLE backup_receipts (
     account_id TEXT NOT NULL,
     device_id TEXT NOT NULL
 );
-CREATE TABLE source_aliases (
-    alias TEXT PRIMARY KEY,
-    source_id TEXT NOT NULL
-);
-
 CREATE TABLE profile_binding (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
     server TEXT NOT NULL,

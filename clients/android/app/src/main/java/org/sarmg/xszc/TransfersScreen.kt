@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
 import org.json.JSONObject
 
+private data class BatchAction(val id: String, val count: Int, val retry: Boolean)
+
 private data class TransferPreview(val id: String, val name: String, val uri: String? = null, val asset: RemoteAsset? = null)
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -39,6 +41,10 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
     val uploadState = uploads[profile]; val downloadState = downloadStates[profile]
     val now by produceState(TransferRate.now()) { while (true) { delay(1000); value = TransferRate.now() } }
     var uploadMenu by remember { mutableStateOf(false) }
+    var downloadMenu by remember { mutableStateOf(false) }
+    var batchAction by remember(profile) { mutableStateOf<BatchAction?>(null) }
+    var cancelledBatchesVisible by remember(profile) { mutableStateOf(false) }
+    var clearHistory by remember(profile) { mutableStateOf<String?>(null) }
     val api = remember(profile) { config.connection().let { if (config.isLoggedIn) BackupApi(it.server, it.token) else null } }
     suspend fun refresh() {
         val result = withContext(Dispatchers.IO) {
@@ -66,6 +72,10 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
         } catch (error: CancellationException) { throw error }
         catch (error: Exception) { notice = error.message ?: "操作失败" }
     } }
+    fun requestBatch(id: String, retry: Boolean) {
+        val batch = batches.firstOrNull { it.first.getString("id") == id }?.first ?: return
+        batchAction = BatchAction(id, batch.getInt("items"), retry)
+    }
     LaunchedEffect(profile) {
         while (true) {
             try { refresh() }
@@ -92,6 +102,12 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
                     DropdownMenuItem(text = { Text("继续上传") }, enabled = config.isLoggedIn && uploadState == null, onClick = {
                         uploadMenu = false; BackupScheduler.enqueueNow(context, config, automatic = config.autoBackup)
                     })
+                    DropdownMenuItem(text = { Text("已取消批次") }, onClick = {
+                        uploadMenu = false; cancelledBatchesVisible = true
+                    })
+                    DropdownMenuItem(text = { Text("清除已完成手动批次记录") }, onClick = {
+                        uploadMenu = false; clearHistory = "upload"
+                    })
                 }
             }
         }
@@ -106,15 +122,23 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
                 DropdownMenu(menu, { menu = false }, shape = AppShapes.group) {
                     DropdownMenuItem(text = { Text(photo.status) }, enabled = false, onClick = {})
                     photo.batchId?.let { id ->
-                            DropdownMenuItem(text = { Text("重试上传") }, onClick = { menu = false; changeBatch(id, true) })
-                            DropdownMenuItem(text = { Text("取消上传") }, onClick = { menu = false; changeBatch(id, false) })
+                            val count = batches.firstOrNull { it.first.getString("id") == id }?.first?.getInt("items") ?: 0
+                            DropdownMenuItem(text = { Text("重试整个批次（${count}项）") }, onClick = { menu = false; requestBatch(id, true) })
+                            DropdownMenuItem(text = { Text("取消整个批次（${count}项）") }, onClick = { menu = false; requestBatch(id, false) })
                     }
                 }
             }
         }
         item(key = "download-header", span = { GridItemSpan(maxLineSpan) }) {
-            TransferHeader("下载", downloadProgress(currentDownloads), TransferRate.formatted(downloadState?.rate?.bytesPerSecond(now) ?: 0.0),
-                downloadsExpanded, "transfers.download") { downloadsExpanded = !downloadsExpanded }
+            Box {
+                TransferHeader("下载", downloadProgress(currentDownloads), TransferRate.formatted(downloadState?.rate?.bytesPerSecond(now) ?: 0.0),
+                    downloadsExpanded, "transfers.download", onLongClick = { downloadMenu = true }) { downloadsExpanded = !downloadsExpanded }
+                DropdownMenu(downloadMenu, { downloadMenu = false }, shape = AppShapes.group) {
+                    DropdownMenuItem(text = { Text("清除已完成下载记录") }, onClick = {
+                        downloadMenu = false; clearHistory = "download"
+                    })
+                }
+            }
         }
         if (downloadsExpanded) items(pendingDownloads, key = { "download.${it.id}" }) { download ->
             var menu by remember(download.id) { mutableStateOf(false) }
@@ -133,6 +157,45 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
         if (notice.isNotBlank()) item(span = { GridItemSpan(maxLineSpan) }) {
             Text(notice, Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
+    }
+    batchAction?.let { action ->
+        AlertDialog(onDismissRequest = { batchAction = null },
+            title = { Text("${if (action.retry) "重试" else "取消"}整个批次（${action.count}项）？") },
+            text = { Text(if (action.retry) "恢复此批次中未完成的项目；已完成项目不会重复上传。"
+                else "此操作影响整个批次，不只这张照片。已完成的云端文件会保留；被其他批次或自动备份使用的资源仍可继续上传。取消后可从“已取消批次”恢复。") },
+            confirmButton = { TextButton(onClick = { batchAction = null; changeBatch(action.id, action.retry) }) { Text("确认") } },
+            dismissButton = { TextButton(onClick = { batchAction = null }) { Text("返回") } })
+    }
+    if (cancelledBatchesVisible) AlertDialog(onDismissRequest = { cancelledBatchesVisible = false },
+        title = { Text("已取消批次") },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
+            val cancelled = batches.filter { it.first.getBoolean("cancelled") }
+            if (cancelled.isEmpty()) Text("没有已取消批次")
+            cancelled.forEach { (batch, _) ->
+                TextButton(onClick = { cancelledBatchesVisible = false; requestBatch(batch.getString("id"), true) }) {
+                    Text("恢复整个批次（${batch.getInt("items")}项，${batch.getInt("complete")}项已完成）")
+                }
+            }
+        } }, confirmButton = { TextButton(onClick = { cancelledBatchesVisible = false }) { Text("关闭") } })
+    clearHistory?.let { kind ->
+        AlertDialog(onDismissRequest = { clearHistory = null }, title = { Text(if (kind == "upload") "清除已完成手动批次记录？" else "清除已完成下载记录？") },
+            text = { Text(if (kind == "upload") "只清除传输列表中已完成的手动批次；自动备份状态、手机和云端文件及上传回执均保留。"
+                else "只清除传输列表中的完成记录；手机和云端文件均保留。") },
+            confirmButton = { TextButton(onClick = {
+                clearHistory = null
+                if (kind == "download") DownloadTransfers.clearAllCompleted(profile)
+                else scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val handle = TransferStore.open(context, profile).handle
+                            batches.filter { it.first.getInt("items") > 0 && it.first.getInt("items") == it.first.getInt("complete") }
+                                .forEach { TransferStore.clearCompletedBatch(handle, it.first.getString("id")) }
+                        }
+                        refresh()
+                    } catch (error: CancellationException) { throw error }
+                    catch (error: Exception) { notice = error.message ?: "清除记录失败" }
+                }
+            }) { Text("清除记录") } }, dismissButton = { TextButton(onClick = { clearHistory = null }) { Text("返回") } })
     }
     preview?.let { photo ->
         FullScreenPhotoDialog(onClose = { preview = null }) {

@@ -7,10 +7,12 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
 /** Every field is a server-side filter, included in the persisted query identity. */
-data class CloudFilters(val kind: String? = null, val from: Long? = null, val to: Long? = null, val device: String? = null) {
+data class CloudFilters(val kind: String? = null, val from: Long? = null, val to: Long? = null, val device: String? = null,
+    val archived: Boolean? = null, val tag: String? = null) {
     fun params(): Map<String, String> = buildMap {
         kind?.let { put("media_kind", it) }; from?.let { put("from_ms", it.toString()) }
         to?.let { put("to_ms", it.toString()) }; device?.let { put("device_id", it) }
+        archived?.let { put("archived", it.toString()) }; tag?.let { put("tag_id", it) }
     }
 }
 internal object GalleryCache {

@@ -125,7 +125,7 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
         } catch (error: Exception) {
             if (config.profile == profile) config.saveSnapshot(snapshot.copy(state = "waiting",
                 message = error.message ?: "等待网络或系统调度"))
-            return Result.retry()
+            return if (uploadFailurePolicy(error).retryable) Result.retry() else Result.failure()
         } finally { TransferTelemetry.uploads.end(profile, telemetrySession) }
     }
 
@@ -139,7 +139,7 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
             val currentConfig = SecureConfig(applicationContext)
             if (isStopped || !currentConfig.isLoggedIn || currentConfig.profile != inputData.getString("profile") ||
                 TransferStore.command(handle, "active", JSONObject().put("job_id", jobId)) != true) {
-                error("本次上传已取消或账户已切换")
+                throw kotlinx.coroutines.CancellationException("本次上传已取消或账户已切换")
             }
         }
         try {
@@ -196,10 +196,13 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
             TransferStore.command(handle, "supersede", JSONObject().put("job_id", jobId))
             return 0L
         } catch (error: Exception) {
-            MobileContractV1.requireEnvelope(
-                NativeBridgeV1.markFailed(handle, jobId, error.message ?: "上传失败", true),
-            )
-            throw error
+            val policy = uploadFailurePolicy(error)
+            TransferStore.command(handle, "fail_upload", JSONObject().put("job_id", jobId)
+                .put("error", error.message ?: "上传失败").put("retryable", policy.retryable)
+                .put("retry_after_ms", policy.retryAfterMs ?: JSONObject.NULL))
+            if (policy.retryable) throw error
+            // Permanent refusal is visible per item; it must not block later work.
+            return 0L
         } finally { TransferTelemetry.uploads.resource(profile, telemetrySession, null) }
     }
 

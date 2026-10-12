@@ -1,10 +1,8 @@
 package org.sarmg.xszc
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
@@ -12,23 +10,6 @@ import java.util.UUID
 internal object SelectedMedia {
     // Reserve room for chunk preparation as well as the source. Process one item at a time.
     private const val MAX_SOURCE_BYTES = 2L * 1024 * 1024 * 1024
-
-    fun persist(context: Context, profile: String, uris: List<Uri>): String {
-        val session = TransferStore.open(context, profile)
-        val batch = UUID.randomUUID().toString()
-        val items = JSONArray()
-        for (uri in uris.distinct()) {
-            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            var name = "媒体"
-            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
-                if (it.moveToFirst()) name = it.getString(0) ?: name
-            }
-            items.put(JSONObject().put("id", UUID.randomUUID().toString()).put("source",
-                JSONObject().put("uri", uri.toString()).put("name", name).toString()))
-        }
-        TransferStore.command(session.handle, "create_batch", JSONObject().put("id", batch).put("items", items))
-        return batch
-    }
 
     fun prepare(context: Context, handle: Long, staging: File, batch: String, item: JSONObject) {
         val descriptor = JSONObject(item.getString("source"))
@@ -63,18 +44,10 @@ internal object SelectedMedia {
                     }
                 }
             } ?: error("需要重新授权访问所选媒体")
-            // Picker URI aliases are not assumed to be MediaStore identities. Hash the delivered
-            // bytes for a stable import identity, including across provider URI changes.
-            val digest = java.security.MessageDigest.getInstance("SHA-256")
-            output.inputStream().use { input ->
-                val buffer = ByteArray(64 * 1024)
-                while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
-            }
-            val source = descriptor.optString("source_id").takeIf { it.isNotEmpty() }
-                ?: ("android-import:" + digest.digest().joinToString("") { "%02x".format(it) })
+            val source = descriptor.getString("source_id")
+            check(source.isNotBlank()) { "所选项目缺少图库来源身份" }
             val modifiedMs = descriptor.optLong("modified_ms", 0)
             TransferStore.gallery(handle, "declare_resources", JSONObject().put("source_id", source).put("modified_ms", modifiedMs).put("originals", 1))
-            TransferStore.command(handle, "alias", JSONObject().put("alias", "$uri#$source").put("source_id", source))
             var createdMs = System.currentTimeMillis()
             runCatching {
                 resolver.query(uri, arrayOf("datetaken", "date_added"), null, null, null)?.use {
@@ -92,7 +65,7 @@ internal object SelectedMedia {
             }
             if (!linked(source, output.length())) {
                 scanner.enqueue(handle, source, source, kind, "primary", output, name, mime,
-                    createdMs, modifiedMs, JSONObject().put("import_copy", !descriptor.has("source_id")), true, batch, itemId)
+                    createdMs, modifiedMs, JSONObject(), true, batch, itemId)
                 primaryQueued = true
             }
             val thumbnailId = "$source#thumbnail-v1"

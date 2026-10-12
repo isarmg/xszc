@@ -26,7 +26,4 @@ internal object DownloadTransfers {
     @Synchronized fun clearAllCompleted(profile: String) {
         rows.value = rows.value.filterNot { it.profile == profile && it.isCompleted }
     }
-    @Synchronized fun clearCompleted(profile: String, id: String) {
-        rows.value = rows.value.filterNot { it.profile == profile && it.id == id && it.isCompleted }
-    }
 }

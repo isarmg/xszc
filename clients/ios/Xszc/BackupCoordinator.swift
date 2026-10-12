@@ -45,6 +45,7 @@ final class BackupCoordinator: ObservableObject {
     }
     @Published var remoteAssets: [RemoteAsset] = []
     @Published var showingTrash = false
+    @Published var remoteTags: [RemoteTag] = []
     @Published var remoteAlbums: [RemoteAlbum] = []
     @Published var selectedRemoteAlbum: UUID?
     @Published var newTagName = ""
@@ -91,7 +92,7 @@ final class BackupCoordinator: ObservableObject {
         uploadProgress = [:]; activeUploadJobID = nil
         activeDownloadID = nil; uploadRate.reset(); downloadRate.reset()
         uploadPhotos = []
-        downloads = []; library = nil; remoteAssets = []; remoteAlbums = []; duplicateGroups = []; selectedRemoteAlbum = nil; nextCursor = nil; batches = []; automaticUploads = []; libraryLoading = false; libraryError = nil
+        downloads = []; library = nil; remoteAssets = []; remoteAlbums = []; remoteTags = []; duplicateGroups = []; selectedRemoteAlbum = nil; nextCursor = nil; batches = []; automaticUploads = []; libraryLoading = false; libraryError = nil
     }
     func stopTransfers() { uploader?.cancel(); uploader = nil }
     func store() throws -> TransferStore {
@@ -212,9 +213,6 @@ final class BackupCoordinator: ObservableObject {
             refreshTransfers()
         } catch { status = error.localizedDescription }
     }
-    func clearCompletedDownload(_ id: UUID) {
-        downloads.removeAll { $0.id == id && $0.isCompleted }
-    }
     func clearCompletedUploads() {
         for id in batches.filter(\.isCompleted).map(\.id) { clearCompletedBatch(id) }
     }
@@ -252,14 +250,19 @@ final class BackupCoordinator: ObservableObject {
         do {
             let connection = try await remoteLibrary()
             let page = try await connection.loadTimelinePage(cursor: cursor, trashed: trash, favorite: favorite, albumId: album, filters: filters, store: cacheStore)
-            let albums = first ? (try? await connection.albums()) : nil
             guard identity == profile, generation == libraryGeneration else { return }
-            if let albums { remoteAlbums = albums }
             if let next = page.nextCursor, !seenCursors.insert(next).inserted { throw RemoteLibraryError.invalidCursor }
             var ids = Set(remoteAssets.map(\.id))
             remoteAssets.append(contentsOf: page.items.filter { ids.insert($0.id).inserted })
             nextCursor = page.nextCursor; library = connection; libraryError = nil
             status = "\(page.cached ? "离线缓存 · " : "")已加载 \(remoteAssets.count) 项云端媒体"
+            if first { Task {
+                let albums = try? await connection.albums()
+                let tags = try? await connection.tags()
+                guard identity == profile, generation == libraryGeneration else { return }
+                if let albums { remoteAlbums = albums }
+                if let tags { remoteTags = tags }
+            } }
         } catch { if identity == profile && generation == libraryGeneration {
             libraryError = error.localizedDescription; status = error.localizedDescription
         } }
@@ -432,6 +435,7 @@ final class BackupCoordinator: ObservableObject {
                 // the next run links completed originals and prepares the remainder.
                 throw CoordinatorFailure.windowComplete
             } catch {
+                if UploadHTTPFailure.policy(for: error).retryable { throw error }
                 try store.setItem(batch: item.batch, item: item.item, state: "blocked", error: error.localizedDescription)
             }
         }
@@ -500,8 +504,16 @@ final class BackupCoordinator: ObservableObject {
                             refreshTransfers()
                             continue
                         }
-                        try store.client.markFailed(job: job.jobId, error: error.localizedDescription)
-                        throw error
+                        let policy = UploadHTTPFailure.policy(for: error)
+                        try store.client.transfer(["op": "fail_upload", "job_id": job.jobId,
+                            "error": error.localizedDescription, "retryable": policy.retryable,
+                            "retry_after_ms": policy.retryAfterMs as Any? ?? NSNull()])
+                        if policy.retryable { throw error }
+                        // A permanent rejection stays visible; later resources can continue.
+                        activeUploadJobID = nil; uploadProgress = [:]
+                        processed += 1
+                        refreshTransfers()
+                        continue
                     }
                     processed += 1
                     activeUploadJobID = nil; uploadProgress = [:]
@@ -530,10 +542,16 @@ final class BackupCoordinator: ObservableObject {
             status = ""
             scheduleBackgroundRun()
             return true
+        } catch CoordinatorFailure.windowComplete {
+            status = "本轮处理完成，等待系统继续调度"
+            scheduleBackgroundRun()
         } catch is CancellationError {
             status = "传输已中断，批次仍保留"
         } catch {
-            if identity == profile { status = "等待处理：\(error.localizedDescription)"; scheduleBackgroundRun() }
+            if identity == profile {
+                status = "等待处理：\(error.localizedDescription)"
+                if UploadHTTPFailure.policy(for: error).retryable { scheduleBackgroundRun() }
+            }
         }
         return false
     }

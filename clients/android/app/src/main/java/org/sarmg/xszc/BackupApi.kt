@@ -76,7 +76,7 @@ class BackupApi(
             .put(ByteProgressRequestBody(file.asRequestBody(binaryType), onBytesSent))
             .build()
         client.newCall(request).execute().use {
-            if (!it.isSuccessful) error("分块上传失败: ${it.code}")
+            requireSuccess(it, if (it.isSuccessful) "" else it.body.string())
         }
     }
 
@@ -162,14 +162,6 @@ class BackupApi(
         jsonRequest("$serverUrl/v1/tags/$tagId/assets/$assetId", "DELETE", "{}", expectJson = false)
     }
 
-    fun download(path: String, output: OutputStream) {
-        val request = authenticated(Request.Builder().url(resolve(path))).get().build()
-        client.newCall(request).execute().use {
-            if (!it.isSuccessful) error("下载失败: ${it.code}")
-            it.body.byteStream().use { input -> input.copyTo(output) }
-        }
-    }
-
     suspend fun downloadCancellable(path: String, output: OutputStream): Unit = suspendCancellableCoroutine { continuation ->
         val request = authenticated(Request.Builder().url(resolve(path))).get().build()
         val call = client.newCall(request)
@@ -215,6 +207,20 @@ class BackupApi(
         }
     }
 
+    private fun requireSuccess(response: okhttp3.Response, text: String) {
+        if (response.isSuccessful) return
+        val failure = UploadHttpFailure.parse(response.code, text, response.header("Retry-After"))
+        if (response.code == 409 && failure.code == "upload_superseded") throw UploadSupersededException()
+        throw failure
+    }
+
+    fun resolveTag(name: String): JSONObject {
+        val tags = listTags()
+        (0 until tags.length()).map(tags::getJSONObject).firstOrNull { it.getString("name") == name }?.let { return it }
+        // Server creation is idempotent for the account/name, including races.
+        return createTag(name)
+    }
+
     private fun jsonRequest(url: String, method: String, bodyText: String?, expectJson: Boolean = true): JSONObject {
         val builder = authenticated(Request.Builder().url(url))
         when (method) {
@@ -226,10 +232,7 @@ class BackupApi(
         }
         client.newCall(builder.build()).execute().use {
             val text = it.body.string()
-            if (it.code == 409 && runCatching { JSONObject(text).optString("code") }.getOrNull() == "upload_superseded") {
-                throw UploadSupersededException()
-            }
-            if (!it.isSuccessful) error("服务端请求失败: ${it.code}")
+            requireSuccess(it, text)
             return if (expectJson && text.isNotBlank()) JSONObject(text) else JSONObject()
         }
     }
@@ -238,7 +241,7 @@ class BackupApi(
         val request = authenticated(Request.Builder().url(url)).get().build()
         client.newCall(request).execute().use {
             val text = it.body.string()
-            if (!it.isSuccessful) error("服务端请求失败: ${it.code}")
+            requireSuccess(it, text)
             return org.json.JSONArray(text)
         }
     }

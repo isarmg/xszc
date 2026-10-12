@@ -95,7 +95,7 @@ from pathlib import Path
 
 source = Path("clients/ios/Xszc/BackupCoordinator.swift").read_text()
 start = source.index("catch {", source.index("do { try await upload.submit"))
-cleanup = source.index("try store.client.markFailed", start)
+cleanup = source.index('try store.client.transfer(["op": "fail_upload"', start)
 end = source.index("processed += 1", cleanup)
 before_cleanup = source[start:cleanup]
 after_cleanup = source[cleanup:end]
@@ -115,11 +115,11 @@ source = Path("clients/android/app/src/main/java/org/sarmg/xszc/CloudGalleryScre
 page = source.split("suspend fun loadPage(reset: Boolean)", 1)[1].split("    fun load(reset:", 1)[0]
 metadata = page.split("if (reset) scope.launch {", 1)[1]
 assert page.index("assets = (assets + page.items)") < page.index("source.albums()")
-for kind in ("albums", "devices"):
+for kind in ("albums", "devices", "tags"):
     assert f"val latest = source.{kind}()\n                    if (requestGeneration != generation) return@launch\n                    {kind} = latest" in metadata
-assert metadata.count("catch (error: CancellationException) { throw error }") >= 2
-assert metadata.count("catch (_: Exception)") == 2
-assert source.count("source.albums()") == source.count("source.devices()") == 1
+assert metadata.count("catch (error: CancellationException) { throw error }") >= 3
+assert metadata.count("catch (_: Exception)") == 3
+assert source.count("source.albums()") == source.count("source.devices()") == source.count("source.tags()") == 1
 assert "onRefresh = { if (!selecting) load(true) }" in source
 print("Android filter metadata refresh source contract passed (native UI not executed)")
 PYMETADATA

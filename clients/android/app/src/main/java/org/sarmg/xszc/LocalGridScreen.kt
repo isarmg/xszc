@@ -267,7 +267,7 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
                 contentType = { if (it is LocalGalleryGridItem.Day) "day" else "media" }) { item ->
                 when (item) {
                     is LocalGalleryGridItem.Day -> Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(item.day, Modifier.testTag("gallery.date.${item.day}"), style = MaterialTheme.typography.titleSmall)
+                        Text("${item.day} UTC", Modifier.testTag("gallery.date.${item.day}"), style = MaterialTheme.typography.titleSmall)
                         if (selecting) GalleryInlineButton("全选", enabled = !busy, onClick = { selectScope(item.day) })
                     }
                     is LocalGalleryGridItem.Media -> {

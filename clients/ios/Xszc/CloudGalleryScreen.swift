@@ -15,6 +15,7 @@ struct CloudGalleryScreen: View {
     @State private var isSelecting = false
     @State private var selectingAll = false
     @State private var selectionGeneration = 0
+    @State private var restoreSelection: [RemoteAsset] = []
     @State private var showDateRange = false
     @State private var dateRangeError = ""
     @State private var showDuplicates = false
@@ -25,7 +26,7 @@ struct CloudGalleryScreen: View {
     @GestureState private var isPinching = false
     private var displayedColumns: Int { min(8, max(1, gridColumns)) }
     private var monthGroups: [RemoteMonthGroup] {
-        let calendar = Calendar.current
+        let calendar = UTCDate.calendar
         let grouped = Dictionary(grouping: coordinator.remoteAssets) { asset in
             calendar.dateInterval(of: .month, for: Date(timeIntervalSince1970: Double(asset.sourceCreatedAtMs) / 1000))?.start ?? .distantPast
         }
@@ -86,7 +87,7 @@ struct CloudGalleryScreen: View {
                             }
                         } header: {
                             HStack {
-                                Text(group.id.formatted(.dateTime.year().month(.wide)))
+                                Text(UTCDate.monthLabel(group.id))
                                     .font(.subheadline.bold())
                                     .accessibilityIdentifier("cloud.date.\(Int(group.id.timeIntervalSince1970))")
                                 Spacer()
@@ -171,6 +172,12 @@ struct CloudGalleryScreen: View {
         }
         .onChange(of: coordinator.selectedRemoteAlbum) { _, _ in
             resetSelection(ending: false); Task { await coordinator.refreshLibrary() }
+        }
+        .alert("仅保存主资源到手机？", isPresented: Binding(get: { !restoreSelection.isEmpty }, set: { if !$0 { restoreSelection = [] } })) {
+            Button("保存主资源") { let values = restoreSelection; restoreSelection = []; coordinator.enqueueDownloads(values); resetSelection() }
+            Button("取消", role: .cancel) { restoreSelection = [] }
+        } message: {
+            Text("每项只保存主要照片或视频；Live Photo 伴随视频、RAW 配对和其他附属原件不会恢复为完整资产。")
         }
         .onChange(of: coordinator.favoritesOnly) { _, _ in
             resetSelection(ending: false); Task { await coordinator.refreshLibrary() }
@@ -271,7 +278,7 @@ struct CloudGalleryScreen: View {
         let identity = coordinator.profile
         defer { if generation == selectionGeneration { selectingAll = false } }
         func selectLoaded() {
-            let calendar = Calendar.current
+            let calendar = UTCDate.calendar
             let assets = coordinator.remoteAssets.filter { asset in
                 guard let month else { return true }
                 return calendar.dateInterval(of: .month, for: Date(timeIntervalSince1970: Double(asset.sourceCreatedAtMs) / 1000))?.start == month
@@ -295,8 +302,7 @@ struct CloudGalleryScreen: View {
         guard isSelecting else { isSelecting = true; return }
         let assets = coordinator.remoteAssets.filter { selectedAssetIds.contains($0.id) }
         guard !assets.isEmpty else { return }
-        coordinator.enqueueDownloads(assets)
-        resetSelection()
+        restoreSelection = assets
     }
     private func updateGridScale(_ scale: CGFloat) {
         if pinchStartColumns == nil { pinchStartColumns = displayedColumns }
@@ -332,6 +338,14 @@ struct CloudGalleryScreen: View {
                 Text("全部设备").tag(Optional<String>.none)
                 ForEach(coordinator.remoteDevices) { Text($0.name).tag(Optional($0.id)) }
             }
+            Picker("归档", selection: $coordinator.cloudFilters.archived) {
+                Text("全部归档状态").tag(Optional<Bool>.none)
+                Text("未归档").tag(Optional(false)); Text("已归档").tag(Optional(true))
+            }
+            Picker("标签", selection: $coordinator.cloudFilters.tag) {
+                Text("全部标签").tag(Optional<String>.none)
+                ForEach(coordinator.remoteTags) { tag in Text(tag.name).tag(Optional(tag.id.uuidString)) }
+            }
             Toggle("仅收藏", isOn: $coordinator.favoritesOnly)
             Menu("日期") {
                 Button("全部日期") {
@@ -360,8 +374,8 @@ struct CloudGalleryScreen: View {
                 Button("取消") { showDateRange = false }.buttonStyle(.glass)
                 Spacer()
                 Button("应用") {
-                    let start = Calendar.current.startOfDay(for: startDate)
-                    let end = Calendar.current.startOfDay(for: endDate)
+                    let start = UTCDate.calendar.startOfDay(for: startDate)
+                    let end = UTCDate.calendar.startOfDay(for: endDate)
                     guard start < end else { dateRangeError = "结束日期应晚于开始日期"; return }
                     var filters = coordinator.cloudFilters
                     filters.from = Int64(start.timeIntervalSince1970 * 1000)
@@ -371,6 +385,8 @@ struct CloudGalleryScreen: View {
                 }.buttonStyle(.glassProminent)
             }
         }.padding(20).frame(width: 320)
+            .environment(\.calendar, UTCDate.calendar)
+            .environment(\.timeZone, UTCDate.timeZone)
             .accessibilityIdentifier("cloud.date-range")
     }
 
@@ -423,6 +439,7 @@ struct PhotoViewerScreen: View {
     let onClose: () -> Void
     @EnvironmentObject private var coordinator: BackupCoordinator
     @State private var selected: UUID?
+    @State private var confirmingRestore = false
     @State private var addingTag = false
     @State private var confirmingDelete = false
     private var current: RemoteAsset? { coordinator.remoteAssets.first { $0.id == (selected ?? initial.id) } }
@@ -459,6 +476,10 @@ struct PhotoViewerScreen: View {
         .accessibilityIdentifier("cloud.preview")
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
+        .alert("仅保存主资源到手机？", isPresented: $confirmingRestore) {
+            Button("保存主资源") { if let asset = current { coordinator.enqueueDownloads([asset]) } }
+            Button("取消", role: .cancel) { }
+        } message: { Text("只保存主要照片或视频；Live Photo 伴随视频、RAW 配对和其他附属原件不会恢复为完整资产。") }
         .alert("添加标签", isPresented: $addingTag) {
             TextField("标签名称", text: $coordinator.newTagName)
             Button("取消", role: .cancel) {}
@@ -475,7 +496,7 @@ struct PhotoViewerScreen: View {
         }.onAppear { selected = initial.id }
     }
     @ViewBuilder private func assetActions(_ asset: RemoteAsset) -> some View {
-        Button("保存到手机") { coordinator.enqueueDownloads([asset]) }
+        Button("保存到手机") { confirmingRestore = true }
         Button(asset.favorite ? "取消收藏" : "收藏") { Task { await coordinator.toggleFavorite(asset); onClose() } }
         Button(asset.archived ? "取消归档" : "归档") { Task { await coordinator.toggleArchived(asset); onClose() } }
         Button("添加标签") { coordinator.newTagName = ""; addingTag = true }

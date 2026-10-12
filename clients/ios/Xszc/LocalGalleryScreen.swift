@@ -20,7 +20,7 @@ struct LocalMedia: Identifiable {
         created = (raw["created_ms"] as? Int64) ?? 0; state = (raw["backup_state"] as? String) ?? "unknown"
         excluded = (raw["excluded"] as? Bool) ?? false
     }
-    var day: Date { Calendar.current.startOfDay(for: Date(timeIntervalSince1970: Double(created) / 1000)) }
+    var day: Date { UTCDate.calendar.startOfDay(for: Date(timeIntervalSince1970: Double(created) / 1000)) }
     var status: String {
         switch state {
         case "complete": "已备份"
@@ -280,7 +280,7 @@ struct LocalGalleryScreen: View {
                             ForEach(section.entries) { entry in localTile(entry).id(entry.id) }
                         } header: {
                             HStack {
-                                Text(day, style: .date).font(.subheadline.bold())
+                                Text(UTCDate.dayLabel(day)).font(.subheadline.bold())
                                     .accessibilityAddTraits(.isHeader)
                                     .accessibilityIdentifier("gallery.date.\(Int(day.timeIntervalSince1970))")
                                 Spacer()

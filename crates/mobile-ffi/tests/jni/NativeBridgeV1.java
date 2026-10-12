@@ -56,7 +56,7 @@ public final class NativeBridgeV1 {
         expect(IllegalArgumentException.class, () -> open(absent.toString(), "private-secret"));
         if (Files.exists(absent.getParent())) throw new AssertionError("invalid config wrote state");
         String path = Path.of(args[0], "client-v1.sqlite").toString();
-        String config = "{\"product\":\"xszc\",\"application_version\":\"1.0.0\",\"revision\":1,\"state_epoch\":\"xszc-mobile-v1\",\"part_size\":16777216}";
+        String config = "{\"product\":\"xszc\",\"application_version\":\"1.0.0\",\"revision\":2,\"state_epoch\":\"xszc-mobile-v1\",\"part_size\":16777216}";
         long first = open(path, config);
         if (first == 0 || !needs(first, "中文😀", "resource", 1)) throw new AssertionError("valid Unicode query failed");
         if (!stats(first).contains("\"ok\":true")) throw new AssertionError("invalid success envelope");

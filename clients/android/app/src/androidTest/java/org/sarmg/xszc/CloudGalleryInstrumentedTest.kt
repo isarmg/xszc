@@ -80,9 +80,10 @@ class CloudGalleryInstrumentedTest {
         assertEquals(before.height, compose.onNodeWithTag("cloud.filter").fetchSemanticsNode().boundsInRoot.height)
         compose.onNodeWithTag("cloud.grid").performTouchInput { swipeUp() }
         assertEquals(before.top, compose.onNodeWithTag("cloud.filter").fetchSemanticsNode().boundsInRoot.top)
-        compose.onNodeWithTag("cloud.month.2026年6月").assertIsNotDisplayed()
+        compose.onNodeWithTag("cloud.month.2026-06 UTC").assertIsNotDisplayed()
         screenshot("cloud-selection-scrolled")
         compose.onNodeWithTag("cloud.download").performClick()
+        compose.onNodeWithText("保存主资源").performClick()
         compose.runOnIdle { assertEquals(54, downloaded.map { it.id }.toSet().size) }
         compose.onNodeWithTag("cloud.select").assertIsDisplayed()
         compose.onNodeWithTag("cloud.selection-count").assertDoesNotExist()
@@ -93,7 +94,7 @@ class CloudGalleryInstrumentedTest {
     @Test fun monthSelectionLoadsRemainingPagesAndFiltersResetSelection() {
         val pages = Pages(); show(pages)
         compose.onNodeWithTag("cloud.select").performClick()
-        compose.onNodeWithTag("cloud.month-all.2026年6月").performClick()
+        compose.onNodeWithTag("cloud.month-all.2026-06 UTC").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("已选 36 项").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("cloud.filter").performClick()
         compose.onNodeWithText("类型").performClick()
@@ -252,6 +253,7 @@ class CloudGalleryInstrumentedTest {
             compose.onNodeWithTag("cloud.select").performClick()
             compose.onNodeWithTag("cloud.photo.fixture-0").performClick()
             compose.onNodeWithTag("cloud.download").performClick()
+        compose.onNodeWithText("保存主资源").performClick()
             compose.onNodeWithText("另一页面").assertIsDisplayed()
             compose.runOnIdle { gate.complete(Unit) }
             compose.waitUntil(5000) { DownloadTransfers.rows.value.any { it.profile == profile && it.isCompleted } }

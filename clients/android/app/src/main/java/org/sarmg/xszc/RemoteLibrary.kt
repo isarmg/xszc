@@ -31,15 +31,6 @@ data class RemoteAsset(
 object RemoteLibrary {
     data class Page(val items: List<RemoteAsset>, val nextCursor: String?, val cached: Boolean = false)
 
-    fun loadTimelinePage(api: BackupApi, cursor: String? = null, trashed: Boolean = false,
-        favorite: Boolean = false, albumId: String? = null): Page {
-        val page = api.timeline(cursor, trashed, favorite, albumId)
-        val items = page.getJSONArray("items")
-        val next = page.optString("next_cursor").takeIf { it.isNotBlank() && it != "null" }
-        check(next == null || next != cursor) { "服务器返回了无效的分页游标" }
-        return Page(buildList { for (i in 0 until items.length()) add(parseAsset(items.getJSONObject(i))) }, next)
-    }
-
     suspend fun restore(context: Context, api: BackupApi, asset: RemoteAsset, profile: String,
         transferId: String? = null, checkCurrent: () -> Unit = {}): String {
         val transfer = transferId ?: DownloadTransfers.start(profile,
@@ -134,12 +125,6 @@ object RemoteLibrary {
         } finally {
             temporary?.delete()
         }
-    }
-
-    fun thumbnail(api: BackupApi, asset: RemoteAsset): ByteArray? {
-        val resource = asset.resources.firstOrNull { it.role == "thumbnail" }
-            ?: return null
-        return api.downloadBytes(resource.contentPath)
     }
 
     internal fun parseAsset(value: JSONObject): RemoteAsset {

@@ -29,7 +29,7 @@ struct LocalGalleryDirectory {
     var positions: [String: Int] = [:]
     init() {}
     init(_ rows: [[String: Any]]) {
-        let calendar = Calendar.current
+        let calendar = UTCDate.calendar
         entries = rows.compactMap { LocalGalleryEntry($0, calendar: calendar) }
         let grouped = Dictionary(grouping: entries, by: \.day)
         sections = grouped.keys.sorted(by: >).map { LocalGallerySection(id: $0, entries: grouped[$0]!) }

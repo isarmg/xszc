@@ -2,7 +2,6 @@ import Foundation
 
 enum TransferPhotoSource {
   case photoKit(String)
-  case file(URL)
   case remote(RemoteAsset)
   case unavailable
 
@@ -15,8 +14,7 @@ enum TransferPhotoSource {
     }
     if value["kind"] as? String == "photokit", let id = value["id"] as? String {
       self = .photoKit(id)
-    } else if value["kind"] as? String == "import", let path = value["path"] as? String {
-      self = .file(URL(fileURLWithPath: path))
+
     } else {
       self = .unavailable
     }

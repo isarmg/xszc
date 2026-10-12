@@ -8,7 +8,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -57,14 +56,20 @@ class DownloadQueueInstrumentedTest {
             assertTrue(DownloadTransfers.rows.value.filter { it.profile == profile }.all { it.phase == "已取消" })
         } finally { queue.cancelPending(); scope.cancel(); DownloadTransfers.rows.value = DownloadTransfers.rows.value.filterNot { it.profile == profile } }
     }
-    @Test fun pickerCalendarDaysUseLocalBoundariesAndInclusiveEndAcrossDst() {
-        val previous = TimeZone.getDefault()
-        try {
-            TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"))
-            val millis = LocalDate.of(2026, 3, 8).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-            val start = cloudDateBoundary(millis); val end = cloudDateBoundary(millis, endInclusive = true)
-            assertEquals(23L * 3600 * 1000, end - start)
-            assertEquals(LocalDate.of(2026, 3, 8), java.time.Instant.ofEpochMilli(start).atZone(java.time.ZoneId.systemDefault()).toLocalDate())
-        } finally { TimeZone.setDefault(previous) }
+    @Test fun pickerCalendarDaysUseUtcBoundariesAndInclusiveEnd() {
+        val millis = LocalDate.of(2026, 3, 8).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val start = cloudDateBoundary(millis); val end = cloudDateBoundary(millis, endInclusive = true)
+        assertEquals(millis, start)
+        assertEquals(24L * 3600 * 1000, end - start)
+        assertEquals(LocalDate.of(2026, 3, 8), java.time.Instant.ofEpochMilli(start).atZone(ZoneOffset.UTC).toLocalDate())
+    }
+
+    @Test fun localDirectoryGroupsByUtcDateAtMonthBoundary() {
+        val created = java.time.Instant.parse("2026-10-01T00:30:00Z").toEpochMilli()
+        val directory = LocalGalleryDirectory.from(listOf(org.json.JSONObject()
+            .put("source_id", "utc-boundary").put("name", "photo.jpg").put("media_kind", "photo")
+            .put("created_ms", created).put("modified_ms", created)))
+        assertEquals("2026-10-01", directory.entries.single().day)
+        assertTrue(directory.days.containsKey("2026-10-01"))
     }
 }

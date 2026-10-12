@@ -115,8 +115,4 @@ final class TransferStore: @unchecked Sendable {
         return (try client.transfer(["op": "link_resource", "batch_id": batch, "item_id": item,
             "asset": asset, "resource": resource, "modified_ms": modified]) as? Bool) ?? false
     }
-    func source(batch: String, item: String, descriptor: [String: Any]) throws {
-        let data = try JSONSerialization.data(withJSONObject: descriptor)
-        try client.transfer(["op": "set_source", "batch_id": batch, "item_id": item, "source": String(decoding: data, as: UTF8.self)])
-    }
 }

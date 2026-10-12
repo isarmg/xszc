@@ -27,11 +27,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.*
-import java.text.SimpleDateFormat
 import java.time.Instant
-import java.time.ZoneId
 import java.time.ZoneOffset
-import java.util.Date
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /** UI and page selection use the same filter snapshot, including pages not visible yet. */
@@ -40,6 +38,7 @@ internal interface CloudGallerySource {
     suspend fun page(cursor: String?, trash: Boolean, favorite: Boolean, album: String?, filters: CloudFilters): RemoteLibrary.Page
     suspend fun albums(): List<Pair<String, String>> = emptyList()
     suspend fun devices(): List<Pair<String, String>> = emptyList()
+    suspend fun tags(): List<Pair<String, String>> = emptyList()
     suspend fun synchronize(): Boolean = false
 }
 
@@ -61,16 +60,20 @@ private class AccountCloudGallerySource(val context: Context, val config: Secure
         val rows = api.devices()
         (0 until rows.length()).map { rows.getJSONObject(it).let { r -> r.getString("device_id") to r.getString("name") } }
     }
+    override suspend fun tags() = withContext(Dispatchers.IO) {
+        val rows = api.listTags()
+        (0 until rows.length()).map { rows.getJSONObject(it).let { r -> r.getString("tag_id") to r.getString("name") } }
+    }
     override suspend fun synchronize() = withContext(Dispatchers.IO) { GalleryCache.synchronize(context, profile, api) }
 }
 
-// Material date pickers represent calendar days at UTC midnight. Server filters use local days.
+// Date selection, display and server filters all use UTC calendar days.
 internal fun cloudDateBoundary(pickerMillis: Long, endInclusive: Boolean = false): Long {
     val day = Instant.ofEpochMilli(pickerMillis).atZone(ZoneOffset.UTC).toLocalDate()
-    return (if (endInclusive) day.plusDays(1) else day).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    return (if (endInclusive) day.plusDays(1) else day).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 }
 private fun pickerDate(boundary: Long?, exclusiveEnd: Boolean = false): Long? = boundary?.let {
-    val day = Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+    val day = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()
     (if (exclusiveEnd) day.minusDays(1) else day).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 }
 
@@ -96,6 +99,8 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
     val preferences = remember { context.getSharedPreferences("gallery_ui", Context.MODE_PRIVATE) }
     var gridColumns by rememberSaveable(profile) { mutableIntStateOf(preferences.getInt("columns", 3).coerceIn(1, 8)) }
     var filters by remember(profile) { mutableStateOf(CloudFilters()) }
+    var tags by remember(profile) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var downloadConfirmation by remember(profile) { mutableStateOf<List<RemoteAsset>?>(null) }
     var devices by remember(profile) { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var dateRange by remember { mutableStateOf(false) }
     var generation by remember(profile) { mutableIntStateOf(0) }
@@ -108,8 +113,8 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
     var duplicateGroups by remember(profile) { mutableStateOf<org.json.JSONArray?>(null) }
     var downloadNotice by remember(profile) { mutableStateOf("") }
     val hasFilters = favorites || albumId != null || filters != CloudFilters()
-    val monthFormat = remember(Locale.getDefault(), ZoneId.systemDefault()) { SimpleDateFormat("yyyy年M月", Locale.getDefault()) }
-    fun monthLabel(asset: RemoteAsset) = monthFormat.format(Date(asset.createdAtMs))
+    val monthFormat = remember(Locale.getDefault()) { DateTimeFormatter.ofPattern("uuuu-MM 'UTC'", Locale.getDefault()).withZone(ZoneOffset.UTC) }
+    fun monthLabel(asset: RemoteAsset) = monthFormat.format(Instant.ofEpochMilli(asset.createdAtMs))
     fun resetSelection(end: Boolean = false) {
         selectionGeneration++; selectAllJob?.cancel(); selectingAll = false; selection = emptySet()
         if (end) selecting = false
@@ -146,6 +151,13 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
                     devices = latest
                 } catch (error: CancellationException) { throw error }
                 catch (_: Exception) { /* Album and device metadata recover independently. */ }
+                if (requestGeneration != generation) return@launch
+                try {
+                    val latest = source.tags()
+                    if (requestGeneration != generation) return@launch
+                    tags = latest
+                } catch (error: CancellationException) { throw error }
+                catch (_: Exception) { /* Keep known tag choices while offline. */ }
             }
         } catch (error: CancellationException) { throw error }
         catch (error: Exception) {
@@ -185,7 +197,7 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
     }
     fun download(values: List<RemoteAsset>) {
         if (values.isEmpty()) return
-        enqueue(values)
+        downloadConfirmation = values
     }
     LaunchedEffect(source, profile) {
         seen.clear(); loadPage(true)
@@ -289,7 +301,7 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
                     if (filterMenu != "root") DropdownMenuItem(text = { Text("‹ 返回") }, onClick = { filterMenu = "root" })
                     when (filterMenu) {
                         "root" -> {
-                            listOf("albums" to "相册", "types" to "类型", "devices" to "设备", "date" to "日期").forEach { (key, label) ->
+                            listOf("albums" to "相册", "types" to "类型", "devices" to "设备", "tags" to "标签", "archived" to "归档", "date" to "日期").forEach { (key, label) ->
                                 DropdownMenuItem(text = { Text(label) }, trailingIcon = { Text("›") }, onClick = { filterMenu = key })
                             }
                             DropdownMenuItem(text = { Text("仅收藏") }, trailingIcon = { if (favorites) Text("✓") }, onClick = { favorites = !favorites; applyFilter() })
@@ -304,6 +316,12 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
                         "devices" -> (listOf(null to "全部设备") + devices).forEach { (id, name) ->
                             DropdownMenuItem(text = { Text(name) }, trailingIcon = { if (filters.device == id) Text("✓") }, onClick = { filters = filters.copy(device = id); applyFilter() })
                         }
+                        "tags" -> (listOf(null to "全部标签") + tags).forEach { (id, name) ->
+                            DropdownMenuItem(text = { Text(name) }, trailingIcon = { if (filters.tag == id) Text("✓") }, onClick = { filters = filters.copy(tag = id); applyFilter() })
+                        }
+                        "archived" -> listOf(null to "全部归档状态", false to "未归档", true to "已归档").forEach { (value, label) ->
+                            DropdownMenuItem(text = { Text(label) }, trailingIcon = { if (filters.archived == value) Text("✓") }, onClick = { filters = filters.copy(archived = value); applyFilter() })
+                        }
                         "date" -> {
                             DropdownMenuItem(text = { Text("全部日期") }, onClick = { filters = filters.copy(from = null, to = null); applyFilter() })
                             DropdownMenuItem(text = { Text("自定日期范围…") }, onClick = { filterMenu = null; dateRange = true })
@@ -314,7 +332,7 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
             Spacer(Modifier.weight(1f))
             GalleryToolbarButton("下载", onClick = {
                 if (!selecting) selecting = true
-                else if (selection.isNotEmpty()) { download(assets.filter { it.id in selection }); resetSelection(end = true) }
+                else if (selection.isNotEmpty()) { download(assets.filter { it.id in selection }) }
             }, enabled = assets.isNotEmpty() && !selectingAll && (!selecting || selection.isNotEmpty()), modifier = Modifier.testTag("cloud.download"))
             if (selecting) {
                 GalleryToolbarButton("全选", onClick = { selectAll() }, enabled = !selectingAll, modifier = Modifier.testTag("cloud.select-all"))
@@ -344,6 +362,15 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
             if (selection.isNotEmpty()) GalleryInlineButton("清空选择", onClick = { resetSelection() })
         }
     }
+    downloadConfirmation?.let { values ->
+        AlertDialog(onDismissRequest = { downloadConfirmation = null }, shape = AppShapes.dialog,
+            title = { Text("保存 ${values.size} 项主资源到手机？") },
+            text = { Text("每项只保存主要照片或视频。Live Photo 的伴随视频、RAW 配对及其他附属原件不会恢复为完整资产。") },
+            confirmButton = { TextButton(shape = AppShapes.control, onClick = {
+                downloadConfirmation = null; enqueue(values); resetSelection(end = true)
+            }) { Text("保存主资源") } },
+            dismissButton = { TextButton(shape = AppShapes.control, onClick = { downloadConfirmation = null }) { Text("取消") } })
+    }
     if (dateRange) {
         val state = rememberDateRangePickerState(initialSelectedStartDateMillis = pickerDate(filters.from),
             initialSelectedEndDateMillis = pickerDate(filters.to, exclusiveEnd = true))
@@ -371,7 +398,7 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
                             when (operation) {
                                 "archive" -> connection.updateAsset(asset.id, archived = !asset.archived)
                                 "trash" -> if (asset.trashed) connection.restoreAsset(asset.id) else connection.trashAsset(asset.id)
-                                "tag" -> { val created = connection.createTag(tag); connection.addTagAsset(created.getString("tag_id"), asset.id) }
+                                "tag" -> { val created = connection.resolveTag(tag); connection.addTagAsset(created.getString("tag_id"), asset.id) }
                                 "remove-tag" -> {
                                     val tags = connection.listTags()
                                     val existing = (0 until tags.length()).map(tags::getJSONObject)

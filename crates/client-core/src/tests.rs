@@ -237,9 +237,8 @@ fn fresh_client_database_has_exact_current_metadata_and_schema() {
 }
 
 #[test]
-fn new_software_opens_archived_current_database_and_preserves_every_row() {
-    // Independent fixture for the initial 1.0.0 data contract,
-    // independently of the current runtime initializer and package version.
+fn prior_revision_database_is_rejected_and_preserves_every_row() {
+    // Archived revision 1 is rejected in place; no migration/reset is performed.
     assert_eq!(MOBILE_APPLICATION_VERSION, "1.0.0");
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("client.sqlite3");
@@ -305,11 +304,9 @@ fn new_software_opens_archived_current_database_and_preserves_every_row() {
     let before = rows(&mut connection);
     drop(connection);
     secure_permissions(&path);
-    let client = Client::open(&path, current_config(16)).unwrap();
-    assert_eq!(rows(&mut client.lock_connection().unwrap()), before);
-    drop(client);
-    let reopened = Client::open(&path, current_config(16)).unwrap();
-    assert_eq!(rows(&mut reopened.lock_connection().unwrap()), before);
+    assert_rejected_without_byte_changes(&path);
+    let mut preserved = Connection::open(&path).unwrap();
+    assert_eq!(rows(&mut preserved), before);
 }
 
 #[test]

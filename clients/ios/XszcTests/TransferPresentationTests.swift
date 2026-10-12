@@ -187,7 +187,7 @@ final class TransferPresentationTests: XCTestCase {
     coordinator.downloads = [saved, pending]
     coordinator.clearCompletedDownloads()
     XCTAssertEqual(coordinator.downloads.map(\.id), [pending.id])
-    coordinator.clearCompletedDownload(pending.id)
+    coordinator.clearCompletedDownloads()
     XCTAssertEqual(coordinator.downloads.map(\.id), [pending.id])
   }
   func testStoreKeepsFIFOOrderAcrossReopen() throws {

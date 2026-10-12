@@ -4,7 +4,7 @@ import XCTest
 final class MobileContractV1Tests: XCTestCase {
     func testCurrentContractUsesDeclaredSandboxPaths() throws {
         let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("media-mobile-v02-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("media-mobile-revision2-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
 
@@ -21,10 +21,10 @@ final class MobileContractV1Tests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: currentStaging.path))
     }
 
-    func testCredentialAndPreferenceDomainsAreV02Only() {
+    func testCurrentCredentialAndPreferenceDomains() {
         XCTAssertEqual(MobileContractV1.product, "xszc")
         XCTAssertEqual(MobileContractV1.applicationVersion, "1.0.0")
-        XCTAssertEqual(MobileContractV1.revision, 1)
+        XCTAssertEqual(MobileContractV1.revision, 2)
         XCTAssertTrue(MobileContractV1.keychainService.hasPrefix("org.sarmg.xszc."))
         XCTAssertTrue(MobileContractV1.keychainService.contains(".r1."))
         XCTAssertTrue(MobileContractV1.tokenKey.contains("v1"))

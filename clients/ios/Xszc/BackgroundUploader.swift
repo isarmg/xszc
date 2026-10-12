@@ -24,7 +24,7 @@ struct BootstrapResponse: Decodable {
     let deviceId: UUID
 }
 
-final class BackgroundUploader: NSObject, URLSessionTaskDelegate {
+final class BackgroundUploader: NSObject, URLSessionDataDelegate {
     private let client: RustClient
     private let serverURL: URL
     private let token: String
@@ -32,6 +32,7 @@ final class BackgroundUploader: NSObject, URLSessionTaskDelegate {
     private let lock = NSLock()
     private var completions: [Int: CheckedContinuation<Void, Error>] = [:]
     private var progressHandlers: [Int: (Int64) -> Void] = [:]
+    private var errorBodies: [Int: Data] = [:]
     private var lastProgressUpdates: [Int: TimeInterval] = [:]
 
     func cancel() { session.invalidateAndCancel() }
@@ -70,13 +71,13 @@ final class BackgroundUploader: NSObject, URLSessionTaskDelegate {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(job.request)
         let (data, response) = try await SecureSession.shared.data(for: request)
-        try requireSuccess(response)
+        try UploadHTTPFailure.requireSuccess(response, data: data)
         let created = try decoder.decode(CreateUploadResponse.self, from: data)
         try ensureActive(jobId: job.jobId)
         if created.disposition == "complete" {
             guard let resource = created.resourceId else { throw UploadFailure.invalidResponse }
             let (manifest, response) = try await SecureSession.shared.data(for: authorized(path: "/v1/resources/\(resource)", method: "GET"))
-            try requireSuccess(response)
+            try UploadHTTPFailure.requireSuccess(response, data: manifest)
             try saveReceipt(job: job, data: manifest, expectedResourceId: resource)
             progress(1)
             return
@@ -126,7 +127,7 @@ final class BackgroundUploader: NSObject, URLSessionTaskDelegate {
     private func ensureActive(jobId: String) throws {
         try Task.checkCancellation()
         guard try client.transfer(["op": "active", "job_id": jobId]) as? Bool == true else {
-            throw CoordinatorFailure.message("本次上传已取消")
+            throw CancellationError()
         }
     }
 
@@ -135,9 +136,18 @@ final class BackgroundUploader: NSObject, URLSessionTaskDelegate {
             var request = authorized(path: "/v1/albums", method: "POST")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = body
-            let (_, response) = try await SecureSession.shared.data(for: request)
-            try requireSuccess(response)
+            let (data, response) = try await SecureSession.shared.data(for: request)
+            try UploadHTTPFailure.requireSuccess(response, data: data)
         }
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard let response = dataTask.response as? HTTPURLResponse,
+            !(200..<300).contains(response.statusCode) else { return }
+        lock.lock(); defer { lock.unlock() }
+        let retained = errorBodies[dataTask.taskIdentifier] ?? Data()
+        // Enough for the stable envelope; do not retain arbitrary error bodies.
+        errorBodies[dataTask.taskIdentifier] = retained + data.prefix(max(0, 16 * 1024 - retained.count))
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -145,14 +155,14 @@ final class BackgroundUploader: NSObject, URLSessionTaskDelegate {
         let completion = completions.removeValue(forKey: task.taskIdentifier)
         progressHandlers.removeValue(forKey: task.taskIdentifier)
         lastProgressUpdates.removeValue(forKey: task.taskIdentifier)
+        let body = errorBodies.removeValue(forKey: task.taskIdentifier) ?? Data()
         lock.unlock()
         if let error { completion?.resume(throwing: error); return }
         guard let response = task.response as? HTTPURLResponse else {
             completion?.resume(throwing: UploadFailure.invalidResponse); return
         }
-        guard (200..<300).contains(response.statusCode) else {
-            completion?.resume(throwing: UploadFailure.server(response.statusCode)); return
-        }
+        do { try UploadHTTPFailure.requireSuccess(response, data: body) }
+        catch { completion?.resume(throwing: error); return }
         completion?.resume()
         // After process termination, durable Rust work is recovered by querying server missing parts.
     }
@@ -174,18 +184,13 @@ final class BackgroundUploader: NSObject, URLSessionTaskDelegate {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data("{}".utf8)
         let (data, response) = try await SecureSession.shared.data(for: request)
-        if (response as? HTTPURLResponse)?.statusCode == 409,
-            let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-            body["code"] as? String == "upload_superseded" {
-            throw UploadFailure.superseded
-        }
-        try requireSuccess(response)
+        try UploadHTTPFailure.requireSuccess(response, data: data)
         guard let completed = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let resource = completed["resource_id"] as? String,
             let asset = completed["asset_id"] as? String else { throw UploadFailure.invalidResponse }
         let (manifest, manifestResponse) = try await SecureSession.shared.data(for: authorized(
             path: "/v1/resources/\(resource)", method: "GET"))
-        try requireSuccess(manifestResponse)
+        try UploadHTTPFailure.requireSuccess(manifestResponse, data: manifest)
         try saveReceipt(job: job, data: manifest, expectedResourceId: resource, expectedAssetId: asset)
     }
 
@@ -213,11 +218,6 @@ final class BackgroundUploader: NSObject, URLSessionTaskDelegate {
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return request
-    }
-
-    private func requireSuccess(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse else { throw UploadFailure.invalidResponse }
-        guard (200..<300).contains(http.statusCode) else { throw UploadFailure.server(http.statusCode) }
     }
 
     static func validateSession(serverURL: URL, token: String) async throws {
@@ -261,14 +261,12 @@ final class BackgroundUploader: NSObject, URLSessionTaskDelegate {
 enum UploadFailure: LocalizedError {
     case invalidResponse
     case missingPart(UInt32)
-    case server(Int)
     case superseded
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: "服务器返回无效响应"
         case .missingPart(let index): "服务器要求的分块不存在（编号 \(index)）"
-        case .server(let status): "服务器请求失败（HTTP \(status)）"
         case .superseded: "旧上传已被较新版本取代"
         }
     }

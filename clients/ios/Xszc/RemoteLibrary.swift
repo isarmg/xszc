@@ -120,6 +120,12 @@ struct RemoteLibrary {
         return try await BoundedDownload.fetch(request, maximum: maximum)
     }
 
+    func tags() async throws -> [RemoteTag] {
+        let (data, response) = try await SecureSession.shared.data(for: authorized(url: serverURL.appending(path: "/v1/tags"), method: "GET"))
+        try requireSuccess(response)
+        return try decoder.decode([RemoteTag].self, from: data)
+    }
+
     func setFavorite(asset: RemoteAsset, value: Bool) async throws {
         try await sendJSON(path: "/v1/assets/\(asset.assetId)", method: "PATCH", body: ["favorite": value])
     }
@@ -138,7 +144,7 @@ struct RemoteLibrary {
         try requireSuccess(listResponse)
         let tags = try decoder.decode([RemoteTag].self, from: listData)
         let tag: RemoteTag
-        if let existing = tags.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+        if let existing = tags.first(where: { $0.name == name }) {
             tag = existing
         } else {
             var request = try authorized(url: serverURL.appending(path: "/v1/tags"), method: "POST")
@@ -269,9 +275,10 @@ struct RemoteLibrary {
     }
 }
 
-private struct RemoteTag: Decodable {
+struct RemoteTag: Decodable, Identifiable {
     let tagId: UUID
     let name: String
+    var id: UUID { tagId }
 }
 
 enum RemoteLibraryError: LocalizedError {
