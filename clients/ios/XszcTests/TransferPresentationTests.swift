@@ -117,6 +117,52 @@ final class TransferPresentationTests: XCTestCase {
     XCTAssertTrue(coordinator.downloads[0].isCompleted)
     XCTAssertEqual(TransferProgress.download(coordinator.downloads), 1.0 / 3, accuracy: 0.001)
   }
+  @MainActor func testReselectingFailedDownloadReplacesPendingTileAndCompletesProgress() {
+    let coordinator = BackupCoordinator()
+    defer { coordinator.authorizationCode = UUID().uuidString }
+    let asset = RemoteAsset(assetId: UUID(), sourceAssetId: "retry", mediaKind: "photo",
+      sourceCreatedAtMs: 0, favorite: false, archived: false, trashedAtMs: nil, tagNames: [],
+      resources: [RemoteResource(resourceId: UUID(), role: "primary", filename: "one.jpg",
+        mimeType: "image/jpeg", contentSize: 100, storageEncoding: .plainV1,
+        contentPath: "/content", metadata: nil)])
+    let failed = DownloadTransfer(id: UUID(), name: "one.jpg", total: 100, bytes: 50,
+      phase: "下载失败：fixture", asset: asset)
+    coordinator.downloads = [failed]
+    coordinator.enqueueDownloads([asset])
+    XCTAssertEqual(coordinator.downloads.count, 1)
+    XCTAssertNotEqual(coordinator.downloads[0].id, failed.id)
+    XCTAssertEqual(coordinator.downloads[0].bytes, 0)
+    coordinator.enqueueDownloads([asset])
+    XCTAssertEqual(coordinator.downloads.count, 1)
+    coordinator.downloads[0].bytes = 100
+    coordinator.downloads[0].phase = "已保存到手机"
+    XCTAssertTrue(coordinator.downloads.filter { !$0.isCompleted }.isEmpty)
+    XCTAssertEqual(TransferProgress.download(coordinator.downloads), 1)
+    coordinator.clearCompletedDownloads()
+    XCTAssertTrue(coordinator.downloads.isEmpty)
+  }
+  @MainActor func testDownloadRetryPreservesUnrelatedFailuresAndCompletedHistory() {
+    for phase in ["下载失败：fixture", "已取消"] {
+      let coordinator = BackupCoordinator()
+      defer { coordinator.authorizationCode = UUID().uuidString }
+      func asset(_ name: String) -> RemoteAsset {
+        RemoteAsset(assetId: UUID(), sourceAssetId: name, mediaKind: "photo", sourceCreatedAtMs: 0,
+          favorite: false, archived: false, trashedAtMs: nil, tagNames: [], resources: [])
+      }
+      let one = asset("one"), other = asset("other")
+      let old = DownloadTransfer(id: UUID(), name: "one", total: 100, bytes: 50, phase: phase, asset: one)
+      let saved = DownloadTransfer(id: UUID(), name: "one", total: 100, bytes: 100, phase: "已保存到手机", asset: one)
+      let unrelated = DownloadTransfer(id: UUID(), name: "other", total: 100, bytes: 50, phase: phase, asset: other)
+      let unknown = DownloadTransfer(id: UUID(), name: "unknown", total: 100, bytes: 50, phase: phase)
+      coordinator.downloads = [old, saved, unrelated, unknown]
+      coordinator.enqueueDownloads([one])
+      XCTAssertEqual(coordinator.downloads.dropLast().map(\.id), [saved.id, unrelated.id, unknown.id])
+      XCTAssertEqual(coordinator.downloads.last?.bytes, 0)
+      XCTAssertFalse(coordinator.downloads.contains { $0.id == old.id })
+      coordinator.authorizationCode = UUID().uuidString
+      XCTAssertTrue(coordinator.downloads.isEmpty)
+    }
+  }
   func testPhotosKeepQueueOrderAndResourcesDoNotCreateDuplicateTiles() throws {
     func item(_ id: String) throws -> [String: Any] {
       let descriptor = try JSONSerialization.data(withJSONObject: [

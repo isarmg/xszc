@@ -11,7 +11,11 @@ internal object DownloadTransfers {
     val rows = MutableStateFlow<List<Entry>>(emptyList())
     @Synchronized fun start(profile: String, name: String, total: Long, phase: String = "正在下载", asset: RemoteAsset? = null): String {
         val id = UUID.randomUUID().toString()
-        rows.value = rows.value + Entry(id, profile, name, 0, total, phase, asset)
+        // An explicit retry replaces its stale failure in the pending grid.
+        rows.value = rows.value.filterNot {
+            asset != null && it.profile == profile && it.asset?.id == asset.id &&
+                (it.phase == "已取消" || it.phase.startsWith("下载失败："))
+        } + Entry(id, profile, name, 0, total, phase, asset)
         return id
     }
     @Synchronized fun update(id: String, bytes: Long? = null, phase: String? = null) {

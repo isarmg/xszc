@@ -308,6 +308,10 @@ final class BackupCoordinator: ObservableObject {
     func enqueueDownloads(_ assets: [RemoteAsset]) {
         var added = 0
         for asset in assets where downloadingAssetIds.insert(asset.id).inserted {
+            // An explicit retry replaces its stale failure in the pending grid.
+            downloads.removeAll {
+                $0.asset?.id == asset.id && ($0.phase == "已取消" || $0.phase.hasPrefix("下载失败："))
+            }
             let id = UUID()
             downloadQueue.append((id: id, asset: asset))
             downloads.append(DownloadTransfer(id: id, name: asset.primary?.filename ?? "媒体",
