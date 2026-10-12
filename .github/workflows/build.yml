@@ -155,12 +155,15 @@ jobs:
         timeout-minutes: 10
         run: |
           xcodebuild -project clients/ios/Xszc.xcodeproj -scheme Xszc -sdk iphonesimulator -destination "id=$XSZC_TEST_SIMULATOR" -derivedDataPath clients/ios/DerivedData -only-testing:XszcTests -collect-test-diagnostics never -parallel-testing-enabled NO test-without-building
+      # Fixture import has its own budget so UI tests retain the full timeout.
+      - name: Seed iOS UI fixtures
+        timeout-minutes: 18
+        run: time -p bash scripts/seed-ios-ui.sh "$XSZC_TEST_SIMULATOR"
       # Keep our explicit screenshots/log export; avoid Xcode simulator sysdiagnose
       # collection hanging after a finished suite on hosted Apple runners.
       - name: Run iOS login and gallery UI tests
         timeout-minutes: 18
         run: |
-          bash scripts/seed-ios-ui.sh "$XSZC_TEST_SIMULATOR"
           python3 scripts/test-ios-ui.py "$XSZC_TEST_SIMULATOR" clients/ios/TestResults.xcresult
       - name: Export iOS UI screenshots and diagnostics
         if: always()
