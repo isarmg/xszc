@@ -29,7 +29,7 @@
 Rust 核心的连接锁若因操作 panic 中毒，后续读取、入队、上传状态变更、图库或批次变更均返回 `StateLockPoisoned`。宿主应关闭当前 session 并重新打开本地数据库；继续使用该 session 不会越过锁失败。未提交 SQLite 事务会回滚，重开后按已验证的当前记录恢复，不把中断内存当作可继续的状态。
 
 
-软件发行号与持久合同分别校验：当前代码、Rust crate、Android/iOS 发行号为 1.1.0；移动 JSON 应用版本和数据库应用版本仍为 1.0.0，数据库 revision 1、移动 revision 1、epoch xszc-mobile-v1 与 ABI 1 保持不变。`verify-release-version.sh` 从源码独立读取状态和 ABI 值，软件发行号不再写入或比较数据库身份。新软件对归档旧 HEAD DDL 的真实数据库已验证队列、已上传部分、批次、绑定、目录和图库缓存原行保留。
+软件发行号与持久合同分别校验：当前代码、Rust crate、Android/iOS 发行号为 1.1.3；移动 JSON 应用版本和数据库应用版本仍为 1.0.0，数据库 revision 1、移动 revision 1、epoch xszc-mobile-v1 与 ABI 1 保持不变。`verify-release-version.sh` 从源码独立读取状态和 ABI 值，软件发行号不再写入或比较数据库身份。新软件对归档旧 HEAD DDL 的真实数据库已验证队列、已上传部分、批次、绑定、目录和图库缓存原行保留。
 
 
 ## 凭据和退役

@@ -1,5 +1,7 @@
 # 依赖和 unsafe 审查
 
+本文保留 1.1.0 / xcsc 1.0.0 阶段的历史审计正文及后续注明日期的历史记录，不作为当前候选的新验收；当前版本及验证边界见 [1.1.3 发行说明](releases/1.1.3.md)。
+
 本轮候选固定 Rust 1.99.0；数据库采用 SQLx 0.9.0 的 SQLite bundled driver 与 libsqlite3-sys 0.37.0。SQLx 的直接 SQLite 连接不依赖特定 runtime；本产品使用该 worker 和真实 SQLx 事务保留同步移动接口，未引入 SQL 字符串解释器。查询中的数据均通过参数绑定；动态查询仅由固定语句和已转义、受控表名组成。参见 [SQLx 官方 runtime 说明](https://docs.rs/sqlx/0.9.0/sqlx/#runtime-support)。SHA-2 更新为 [0.11.0](https://docs.rs/sha2/0.11.0/sha2/)。JNI 精确消费 0.22.4，与共享 EnvUnowned / Env guard 同一类型图；Java 和 C ABI 不变。同步 worker future 使用公共无 SQLx 依赖的桥。
 
 移除无消费者的工作区依赖声明；Cargo.lock 不含 rusqlite。当前 SQLite 结构定义、数据身份、C ABI 和 Android/iOS 功能均继续由各自的产品合同约束，不从软件发行号推导。
