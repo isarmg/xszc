@@ -10,7 +10,8 @@ internal class UploadHttpFailure(
     val code: String,
     val retryable: Boolean,
     val retryAfterMs: Long?,
-) : IOException(if (status == 401 || status == 403)
+    explanation: String? = null,
+) : IOException(explanation ?: if (status == 401 || status == 403)
     "上传授权被拒绝（HTTP $status，$code）；请检查配对凭据或服务端权限"
     else if (retryable) "上传暂时失败（HTTP $status，$code）"
     else "上传被服务端拒绝（HTTP $status，$code）；请检查文件和服务端配置") {
@@ -29,7 +30,10 @@ internal class UploadHttpFailure(
                     (ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() - nowMs).coerceAtLeast(0)
                 }.getOrNull()
             }
-            return UploadHttpFailure(status, code, retryable, wait)
+            val explanation = if (status == 400 && code == "bad_request" &&
+                body?.optString("message") == "asset cannot have more than 16 tags")
+                "每项媒体最多添加16个标签，请先移除一个标签" else null
+            return UploadHttpFailure(status, code, retryable, wait, explanation)
         }
     }
 }

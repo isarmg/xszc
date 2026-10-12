@@ -391,9 +391,12 @@ final class BackupCoordinator: ObservableObject {
         do { try await remoteLibrary().setArchived(asset: asset, value: !asset.archived); await refreshLibrary() }
         catch { status = error.localizedDescription }
     }
-    func addTag(_ asset: RemoteAsset) async {
-        do { try await remoteLibrary().addTag(named: newTagName, to: asset); await refreshLibrary() }
-        catch { status = error.localizedDescription }
+    func addTag(_ asset: RemoteAsset) async -> Bool {
+        do {
+            try await remoteLibrary().addTag(named: newTagName, to: asset)
+            await refreshLibrary()
+            return true
+        } catch { status = error.localizedDescription; return false }
     }
     func removeTag(_ name: String, from asset: RemoteAsset) async {
         do { try await remoteLibrary().removeTag(named: name, from: asset); await refreshLibrary() }

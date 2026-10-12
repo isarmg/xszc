@@ -154,6 +154,14 @@ class BackupApi(
         JSONObject().put("name", name).toString(),
     )
 
+    fun addTag(asset: RemoteAsset, rawName: String) {
+        val name = rawName.trim()
+        if (name.isEmpty()) return
+        check(name in asset.tagNames || asset.tagNames.size < RemoteAsset.MAX_TAGS) { "每项媒体最多添加16个标签，请先移除一个标签" }
+        val tag = resolveTag(name)
+        addTagAsset(tag.getString("tag_id"), asset.id)
+    }
+
     fun addTagAsset(tagId: String, assetId: String) {
         jsonRequest("$serverUrl/v1/tags/$tagId/assets/$assetId", "POST", "{}", expectJson = false)
     }

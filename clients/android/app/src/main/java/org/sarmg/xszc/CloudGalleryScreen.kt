@@ -110,6 +110,7 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
     var selection by remember(profile) { mutableStateOf<Set<String>>(emptySet()) }
     var selectAllJob by remember(profile) { mutableStateOf<Job?>(null) }
     var selected by remember(profile) { mutableStateOf<Int?>(null) }
+    var previewError by remember(profile) { mutableStateOf<String?>(null) }
     var duplicateGroups by remember(profile) { mutableStateOf<org.json.JSONArray?>(null) }
     var downloadNotice by remember(profile) { mutableStateOf("") }
     val hasFilters = favorites || albumId != null || filters != CloudFilters()
@@ -386,19 +387,20 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
     }
     selected?.let { index ->
         api?.let { connection ->
-            PhotoViewerScreen(context, connection, profile, assets, index, onClose = { selected = null },
+            PhotoViewerScreen(context, connection, profile, assets, index, onClose = { selected = null; previewError = null },
+                errorMessage = previewError, onErrorDismiss = { previewError = null },
                 onSave = { asset -> download(listOf(asset)) },
                 onFavorite = { asset -> scope.launch {
                     try { withContext(Dispatchers.IO) { connection.updateAsset(asset.id, favorite = !asset.favorite) }; selected = null; load(true) }
                     catch (e: CancellationException) { throw e }
-                    catch (e: Exception) { notice = e.message ?: "更新失败" }
+                    catch (e: Exception) { previewError = e.message ?: "更新失败" }
                 } }, onAction = { asset, operation, tag -> scope.launch {
                     try {
                         withContext(Dispatchers.IO) {
                             when (operation) {
                                 "archive" -> connection.updateAsset(asset.id, archived = !asset.archived)
                                 "trash" -> if (asset.trashed) connection.restoreAsset(asset.id) else connection.trashAsset(asset.id)
-                                "tag" -> { val created = connection.resolveTag(tag); connection.addTagAsset(created.getString("tag_id"), asset.id) }
+                                "tag" -> connection.addTag(asset, tag)
                                 "remove-tag" -> {
                                     val tags = connection.listTags()
                                     val existing = (0 until tags.length()).map(tags::getJSONObject)
@@ -411,7 +413,7 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
                         }
                         selected = null; load(true)
                     } catch (e: CancellationException) { throw e }
-                    catch (e: Exception) { notice = e.message ?: "更新失败" }
+                    catch (e: Exception) { previewError = e.message ?: "更新失败" }
                 } })
         }
     }
@@ -476,7 +478,7 @@ internal fun RemoteImage(context: Context, api: BackupApi?, profile: String, ass
 @Composable
 internal fun PhotoViewerScreen(context: Context, api: BackupApi, profile: String, assets: List<RemoteAsset>, index: Int,
     onClose: () -> Unit, onSave: (RemoteAsset) -> Unit, onFavorite: (RemoteAsset) -> Unit,
-    onAction: (RemoteAsset, String, String) -> Unit) {
+    onAction: (RemoteAsset, String, String) -> Unit, errorMessage: String? = null, onErrorDismiss: () -> Unit = {}) {
     FullScreenPhotoDialog(onClose = onClose) {
         val pager = rememberPagerState(initialPage = index, pageCount = { assets.size })
         var menu by remember { mutableStateOf(false) }
@@ -506,7 +508,8 @@ internal fun PhotoViewerScreen(context: Context, api: BackupApi, profile: String
                 DropdownMenuItem(text = { Text("保存到手机") }, onClick = { menu = false; onSave(current) })
                 DropdownMenuItem(text = { Text(if (current.favorite) "取消收藏" else "收藏") }, onClick = { menu = false; onFavorite(current) })
                 DropdownMenuItem(text = { Text(if (current.archived) "取消归档" else "归档") }, onClick = { menu = false; onAction(current, "archive", "") })
-                DropdownMenuItem(text = { Text("添加标签") }, onClick = { menu = false; tag = ""; addingTag = true })
+                DropdownMenuItem(text = { Text(if (current.tagNames.size < RemoteAsset.MAX_TAGS) "添加标签" else "标签已达上限（16个）") },
+                    enabled = current.tagNames.size < RemoteAsset.MAX_TAGS, onClick = { menu = false; addingTag = true })
                 current.tagNames.forEach { existing ->
                     DropdownMenuItem(text = { Text("移除标签：$existing") }, onClick = { menu = false; onAction(current, "remove-tag", existing) })
                 }
@@ -517,6 +520,9 @@ internal fun PhotoViewerScreen(context: Context, api: BackupApi, profile: String
                 text = { OutlinedTextField(tag, { tag = it }, label = { Text("标签名称") }, singleLine = true) },
                 confirmButton = { TextButton(shape = AppShapes.control, enabled = tag.isNotBlank(), onClick = { addingTag = false; onAction(current, "tag", tag.trim()) }) { Text("添加") } },
                 dismissButton = { TextButton(shape = AppShapes.control, onClick = { addingTag = false }) { Text("取消") } })
+            if (errorMessage != null) AlertDialog(onDismissRequest = onErrorDismiss, shape = AppShapes.dialog,
+                title = { Text("操作失败") }, text = { Text(errorMessage) },
+                confirmButton = { TextButton(shape = AppShapes.control, onClick = onErrorDismiss) { Text("知道了") } })
             if (confirmingDelete) AlertDialog(onDismissRequest = { confirmingDelete = false }, shape = AppShapes.dialog, title = { Text("永久删除照片？") },
                 text = { Text("此操作无法撤销。服务器可能在后台继续回收未引用的文件。") },
                 confirmButton = { TextButton(shape = AppShapes.control, onClick = { confirmingDelete = false; onAction(current, "delete", "") }) { Text("永久删除") } },

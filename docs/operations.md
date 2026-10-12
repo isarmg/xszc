@@ -31,7 +31,7 @@
 Rust 核心的连接锁若因操作 panic 中毒，后续读取、入队、上传状态变更、图库或批次变更均返回 `StateLockPoisoned`。宿主应关闭当前 session 并重新打开本地数据库；继续使用该 session 不会越过锁失败。未提交 SQLite 事务会回滚，重开后按已验证的当前记录恢复，不把中断内存当作可继续的状态。
 
 
-软件发行号与持久合同分别校验：当前软件为 1.1.3，应用版本为 1.0.0，移动 JSON revision 与 SQLite revision 均为 2，epoch `xszc-mobile-v1` 与 ABI 1 保持。移除无消费者的 `source_aliases` 并新增永久上传拒绝标记 `jobs.retry_blocked` 后严格校验新的 schema hash；旧 revision 1 数据库保留原位并明确拒绝打开，不迁移、不删除、不静默重置。请在采用本轮代码前确认旧设备队列已处理；旧库需要独立保存，不能按“清缓存”操作删除。
+软件发行号与持久合同分别校验：当前软件为 1.1.4，应用版本为 1.0.0，移动 JSON revision 与 SQLite revision 均为 2，epoch `xszc-mobile-v1` 与 ABI 1 保持。移除无消费者的 `source_aliases` 并新增永久上传拒绝标记 `jobs.retry_blocked` 后严格校验新的 schema hash；旧 revision 1 数据库保留原位并明确拒绝打开，不迁移、不删除、不静默重置。请在采用本轮代码前确认旧设备队列已处理；旧库需要独立保存，不能按“清缓存”操作删除。
 
 
 ## 凭据和退役

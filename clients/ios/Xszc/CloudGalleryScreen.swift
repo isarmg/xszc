@@ -441,6 +441,7 @@ struct PhotoViewerScreen: View {
     @State private var selected: UUID?
     @State private var confirmingRestore = false
     @State private var addingTag = false
+    @State private var tagError: String?
     @State private var confirmingDelete = false
     private var current: RemoteAsset? { coordinator.remoteAssets.first { $0.id == (selected ?? initial.id) } }
     var body: some View {
@@ -483,9 +484,16 @@ struct PhotoViewerScreen: View {
         .alert("添加标签", isPresented: $addingTag) {
             TextField("标签名称", text: $coordinator.newTagName)
             Button("取消", role: .cancel) {}
-            Button("添加") { if let asset = current { Task { await coordinator.addTag(asset); onClose() } } }
+            Button("添加") { if let asset = current { Task {
+                if await coordinator.addTag(asset) { onClose() }
+                else { tagError = coordinator.status }
+            } } }
                 .disabled(coordinator.newTagName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
+        .alert("添加标签失败", isPresented: Binding(get: { tagError != nil }, set: { if !$0 { tagError = nil } })) {
+            Button("重试") { tagError = nil; addingTag = true }
+            Button("取消", role: .cancel) { tagError = nil }
+        } message: { Text(tagError ?? "") }
         .confirmationDialog("永久删除照片？", isPresented: $confirmingDelete, titleVisibility: .visible) {
             Button("永久删除", role: .destructive) {
                 if let asset = current { Task { await coordinator.deletePermanently(asset); onClose() } }
@@ -499,7 +507,9 @@ struct PhotoViewerScreen: View {
         Button("保存到手机") { confirmingRestore = true }
         Button(asset.favorite ? "取消收藏" : "收藏") { Task { await coordinator.toggleFavorite(asset); onClose() } }
         Button(asset.archived ? "取消归档" : "归档") { Task { await coordinator.toggleArchived(asset); onClose() } }
-        Button("添加标签") { coordinator.newTagName = ""; addingTag = true }
+        Button(asset.tagNames.count < RemoteAsset.maximumTags ? "添加标签" : "标签已达上限（16个）") {
+            coordinator.newTagName = ""; addingTag = true
+        }.disabled(asset.tagNames.count >= RemoteAsset.maximumTags)
         ForEach(asset.tagNames, id: \.self) { name in
             Button("移除标签：\(name)") { Task { await coordinator.removeTag(name, from: asset); onClose() } }
         }

@@ -26,7 +26,9 @@ data class RemoteAsset(
     val trashed: Boolean,
     val tagNames: List<String>,
     val resources: List<RemoteResource>,
-)
+) {
+    companion object { const val MAX_TAGS = 16 }
+}
 
 object RemoteLibrary {
     data class Page(val items: List<RemoteAsset>, val nextCursor: String?, val cached: Boolean = false)
