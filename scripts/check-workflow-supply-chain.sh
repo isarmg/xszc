@@ -40,7 +40,8 @@ finish_job() {
 
   [[ -n "$job_runner" ]] ||
     fail "$current_file: job '$current_job' has no fixed runs-on value"
-  if [[ "$current_job" == "ios" ]]; then
+  if [[ ( "$current_file" == ".github/workflows/release.yml" && "$current_job" == "ios" ) ||
+        ( "$current_file" == ".github/workflows/build.yml" && ( "$current_job" == "ios_simulator" || "$current_job" == "ios_device" ) ) ]]; then
     [[ "$job_runner" == "xcode-27" ]] ||
       fail "$current_file: iOS job must use the reviewed xcode-27 image, got '$job_runner'"
   else
