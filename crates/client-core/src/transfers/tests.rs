@@ -42,6 +42,73 @@ fn resource(path: &Path, batch: Option<&str>) -> EnqueueResource {
     }
 }
 #[test]
+fn binding_rejects_device_changes_and_preserves_pending_jobs_and_receipt_identity() {
+    let root = tempfile::tempdir().unwrap();
+    let database = root.path().join("client.sqlite");
+    let source = root.path().join("photo.jpg");
+    fs::write(&source, b"12345678").unwrap();
+    let client = Client::open(&database, config()).unwrap();
+    let account = Uuid::new_v4();
+    let device = Uuid::new_v4();
+    let bind = |client: &Client, account: String, device: String| {
+        client.transfer(request(json!({
+            "op":"bind","server":"https://backup.example","account_id":account,"device_id":device
+        })))
+    };
+    bind(&client, account.to_string(), device.to_string()).unwrap();
+    let completed = client.enqueue(resource(&source, None)).unwrap();
+    let prepared = client
+        .next_prepared(root.path().join(MOBILE_STAGING_DIRECTORY))
+        .unwrap()
+        .unwrap();
+    client
+        .transfer(request(json!({"op":"receipt","job_id":completed,
+        "asset_id":Uuid::new_v4(),"resource_id":Uuid::new_v4(),
+        "content_blake3":prepared.request.content_blake3})))
+        .unwrap();
+    let mut next = resource(&source, None);
+    next.source_asset_id = "pending-asset".into();
+    let pending = client.enqueue(next).unwrap();
+    let binding = client.transfer(request(json!({"op":"binding"}))).unwrap();
+    let receipt = || {
+        client.lock_connection().unwrap().query_row(
+        "SELECT server,account_id,device_id,content_blake3 FROM backup_receipts WHERE job_id=?1",
+        params![completed],|row|Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,String>(2)?,row.get::<_,String>(3)?))
+    ).unwrap()
+    };
+    let evidence = receipt();
+    // A different spelling of the same UUID is the same standard identity;
+    // a different device cannot take over this queue.
+    bind(
+        &client,
+        account.to_string().to_uppercase(),
+        device.to_string().to_uppercase(),
+    )
+    .unwrap();
+    assert!(bind(&client, account.to_string(), Uuid::new_v4().to_string()).is_err());
+    assert!(bind(&client, account.to_string(), Uuid::nil().to_string()).is_err());
+    assert_eq!(
+        client.transfer(request(json!({"op":"binding"}))).unwrap(),
+        binding
+    );
+    assert_eq!(receipt(), evidence);
+    assert_eq!(fs::read(&source).unwrap(), b"12345678");
+    drop(client);
+    let client = Client::open(&database, config()).unwrap();
+    assert_eq!(
+        client.transfer(request(json!({"op":"binding"}))).unwrap(),
+        binding
+    );
+    assert_eq!(
+        client
+            .next_prepared(root.path().join(MOBILE_STAGING_DIRECTORY))
+            .unwrap()
+            .unwrap()
+            .job_id,
+        pending
+    );
+}
+#[test]
 fn pending_items_keep_fifo_order_when_another_batch_is_added_mid_transfer() {
     let root = tempfile::tempdir().unwrap();
     let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();

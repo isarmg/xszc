@@ -1,6 +1,6 @@
 # Android：安装、构建与排障
 
-当前源码版本 **1.1.1**，仅支持最新稳定系统系列 Android 17/API 37 及以上的 arm64-v8a 设备。Windows、Linux 和 macOS 在本页仅作为 Android 开发机，xszc 没有对应的桌面应用。下文 v1.1.0 下载链接保留历史发行包信息，该包早于当前源码的系统支持策略。
+当前源码候选版本 **1.1.5**，仅支持最新稳定系统系列 Android 17/API 37 及以上的 arm64-v8a 设备。Windows、Linux 和 macOS 在本页仅作为 Android 开发机，xszc 没有对应的桌面应用。当前候选尚未发布，下文下载链接指向已公开的 1.1.4；候选改动需同版源码构建。
 
 安装后按[第一次备份](../getting-started.md)登录和验证。两端共享的备份设置、任务操作和数据维护分别见[配置](../configuration.md)、[日常使用](../usage.md)及[维护应用数据](../operations.md)。
 
@@ -8,7 +8,7 @@
 
 ### 安装正式 APK
 
-从 [v1.1.0 发行页](https://github.com/isarmg/xszc/releases/tag/v1.1.0)下载 `xszc-android-1.1.0-arm64.apk` 和 `SHA256SUMS`。核对 APK 的 SHA-256 后，在手机打开文件，按系统提示为本次来源允许安装。
+从 [v1.1.4 发行页](https://github.com/isarmg/xszc/releases/tag/v1.1.4)下载 `xszc-android-1.1.4-arm64.apk` 和 `SHA256SUMS`。核对 APK 的 SHA-256 后，在手机打开文件，按系统提示为本次来源允许安装。
 
 电脑计算哈希：Linux 使用 `sha256sum 文件名`，macOS 使用 `shasum -a 256 文件名`，Windows PowerShell 使用 `Get-FileHash 文件名 -Algorithm SHA256`。结果应与同版清单对应行一致。
 
@@ -17,7 +17,7 @@
 ```sh
 adb devices
 adb shell getprop ro.product.cpu.abilist
-adb install -r ./xszc-android-1.1.0-arm64.apk
+adb install -r ./xszc-android-1.1.4-arm64.apk
 adb shell am start -n org.sarmg.xszc/.MainActivity
 ```
 

@@ -1665,8 +1665,8 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xcsc"
-version = "1.0.4"
-source = "git+https://github.com/isarmg/xcsc.git?rev=9cff5bc1425072533fcb8984ee4820b1f6ab6a5c#9cff5bc1425072533fcb8984ee4820b1f6ab6a5c"
+version = "1.0.5"
+source = "git+https://github.com/isarmg/xcsc.git?rev=c0cf985f82663199e270112a72bbf54ce48ff415#c0cf985f82663199e270112a72bbf54ce48ff415"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -1695,7 +1695,7 @@ dependencies = [
 
 [[package]]
 name = "xszc-core"
-version = "1.1.4"
+version = "1.1.5"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1717,7 +1717,7 @@ dependencies = [
 
 [[package]]
 name = "xszc-crypto"
-version = "1.1.4"
+version = "1.1.5"
 dependencies = [
  "blake3",
  "thiserror",
@@ -1726,7 +1726,7 @@ dependencies = [
 
 [[package]]
 name = "xszc-mobile"
-version = "1.1.4"
+version = "1.1.5"
 dependencies = [
  "jni",
  "serde_json",

@@ -132,27 +132,29 @@ impl Client {
                 account_id,
                 device_id,
             } => {
-                if !server.starts_with("https://")
-                    || Uuid::parse_str(&account_id).is_err()
-                    || Uuid::parse_str(&device_id).is_err()
-                {
+                let (Ok(account), Ok(device)) = (Uuid::parse_str(&account_id), Uuid::parse_str(&device_id)) else {
+                    return Err(ClientError::InvalidContract("invalid backup account identity".into()));
+                };
+                if !server.starts_with("https://") || account.is_nil() || device.is_nil() {
                     return Err(ClientError::InvalidContract(
                         "invalid backup account identity".into(),
                     ));
                 }
-                let existing: Option<(String, String)> = tx
+                let existing: Option<(String, String, String)> = tx
                     .query_row(
-                        "SELECT server,account_id FROM profile_binding WHERE singleton=1",
+                        "SELECT server,account_id,device_id FROM profile_binding WHERE singleton=1",
                         params![],
-                        |r| Ok((r.get(0)?, r.get(1)?)),
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                     )
                     .optional()?;
-                if existing.is_some_and(|value| value != (server.clone(), account_id.clone())) {
+                if existing.is_some_and(|(bound_server,bound_account,bound_device)|
+                    bound_server!=server || Uuid::parse_str(&bound_account).ok()!=Some(account)
+                    || Uuid::parse_str(&bound_device).ok()!=Some(device)) {
                     return Err(ClientError::InvalidContract(
-                        "this queue belongs to a different server or account".into(),
+                        "this queue belongs to a different server, account or device".into(),
                     ));
                 }
-                tx.execute("INSERT INTO profile_binding(singleton,server,account_id,device_id) VALUES (1,?1,?2,?3) ON CONFLICT(singleton) DO UPDATE SET device_id=excluded.device_id", params![server,account_id,device_id])?;
+                tx.execute("INSERT INTO profile_binding(singleton,server,account_id,device_id) VALUES (1,?1,?2,?3) ON CONFLICT(singleton) DO NOTHING", params![server,account.to_string(),device.to_string()])?;
                 Value::Null
             }
             TransferCommand::CreateBatch { id, items } => {

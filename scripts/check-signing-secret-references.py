@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Allow only the two explicit protected xszc signing Secret references."""
+"""Allow only the exact platform and release-manifest signing Secret references."""
 
 from pathlib import Path
 import re
@@ -29,7 +29,7 @@ def validate(text: str) -> set[str]:
                 raise ValueError("a noncanonical signing Secret reference is forbidden")
             references.add(name)
     if references != ALLOWED_SECRETS:
-        raise ValueError("both canonical protected signing Secrets must be referenced")
+        raise ValueError("all canonical protected signing Secrets must be referenced")
     return references
 
 

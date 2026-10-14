@@ -11,7 +11,7 @@ anyhow.workspace = true
 libc.workspace = true
 xszc-crypto = { path = "../crypto" }
 xszs-protocol = { git = "https://github.com/isarmg/xszs.git", rev = "c0aa705df39d3187166f62af4faab7c821be9baa", version = "=1.0.0" }
-xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "9cff5bc1425072533fcb8984ee4820b1f6ab6a5c", version = "=1.0.4" }
+xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "c0cf985f82663199e270112a72bbf54ce48ff415", version = "=1.0.5" }
 sqlx.workspace = true
 futures-util.workspace = true
 libsqlite3-sys.workspace = true

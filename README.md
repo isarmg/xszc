@@ -10,19 +10,19 @@ xszc 是 Android 与 iOS 媒体备份客户端，将用户授权的照片和视�
 
 ## 适用平台
 
-当前源码仅支持最新稳定系统系列：Android 17（API 37）及以上，正式 APK 仅支持 arm64-v8a；iOS 27.0 及以上。iOS 发行包未签名，安装前需要使用自己的 Apple 身份签名。历史 v1.1.0 发行包早于此支持策略，以下已有下载链接仍指向该历史版本。
+当前源码仅支持最新稳定系统系列：Android 17（API 37）及以上，正式 APK 仅支持 arm64-v8a；iOS 27.0 及以上。iOS 发行包未签名，安装前需要使用自己的 Apple 身份签名。当前源码候选版本为 1.1.5，尚未发布；以下下载链接指向已公开的 1.1.4，候选改动需同版源码构建。
 
 ## 快速部署
 
-1. 从 [v1.1.0 下载页](https://github.com/isarmg/xszc/releases/tag/v1.1.0) 获取对应 APK / IPA 和 `SHA256SUMS`，核对安装包 SHA-256。
-2. Android 安装 `xszc-android-1.1.0-arm64.apk`；iOS 为 `xszc-ios-1.1.0-unsigned.ipa` 签名后，通过 Xcode、Apple Configurator 或受管理部署系统安装。
+1. 从 [v1.1.4 下载页](https://github.com/isarmg/xszc/releases/tag/v1.1.4) 获取对应 APK / IPA 和 `SHA256SUMS`，核对安装包 SHA-256。
+2. Android 安装 `xszc-android-1.1.4-arm64.apk`；iOS 为 `xszc-ios-1.1.4-unsigned.ipa` 签名后，通过 Xcode、Apple Configurator 或受管理部署系统安装。
 3. 请 xszs 管理员创建备份实例。在应用登录框填写 HTTPS 根地址（例如 `https://backup.example.com`，不附加路径），“密码”填写实例授权码。
 4. 在系统界面授权照片/视频访问，设置备份范围与网络、电源条件；先手动备份少量媒体，在“传输”和“云端”确认完成，再启用自动备份。
 
 Android 开发机已配置 ADB、设备已授权 USB 调试时，也可安装并打开正式包：
 
 ```sh
-adb install -r ./xszc-android-1.1.0-arm64.apk
+adb install -r ./xszc-android-1.1.4-arm64.apk
 adb shell am start -n org.sarmg.xszc/.MainActivity
 ```
 

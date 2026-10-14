@@ -41,7 +41,7 @@ fi
 
 # Software releases do not rename persistent data or the ABI contract.
 if ! [[ "$state_version" == "1.0.0" && "$abi_revision" == "1" ]]; then
-  echo "The exact current mobile state/ABI contract changed; an explicit product migration is required." >&2
+  echo "The exact current mobile state/ABI contract changed; review and publish its new current identity explicitly. Nonmatching data must be preserved and rejected." >&2
   exit 1
 fi
 

@@ -54,7 +54,7 @@ class SigningSecretReferenceTests(unittest.TestCase):
             with self.subTest(expression=expression), self.assertRaises(ValueError):
                 checker.validate(self.workflow(f"  INDIRECT: {expression}\n"))
 
-    def test_requires_both_canonical_bindings(self):
+    def test_requires_platform_canonical_bindings(self):
         for text in (
             "env: {}\n",
             "env:\n  PASSWORD: ${{ secrets.XSZC_ANDROID_SIGNING_PKCS12_PASSWORD }}\n",
