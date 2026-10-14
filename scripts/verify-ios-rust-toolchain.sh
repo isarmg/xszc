@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+[[ $# == 1 ]] || { echo 'Expected simulator or device lane' >&2; exit 2; }
+case "$1" in
+  simulator) platform_target=aarch64-apple-ios-sim ;;
+  device) platform_target=aarch64-apple-ios ;;
+  *) echo 'Expected simulator or device lane' >&2; exit 2 ;;
+esac
+# This override also prevents the repository's developer components from being
+# installed implicitly by unqualified cargo commands in these build-only lanes.
+[[ "${RUSTUP_TOOLCHAIN:-}" == 1.99.0 ]] || {
+  echo 'The iOS lane must explicitly select RUSTUP_TOOLCHAIN=1.99.0' >&2
+  exit 1
+}
+
 # Check the running compiler even after an exact cache hit; never trust its key.
-identity="$(rustc +1.99.0 --version --verbose)"
+identity="$(rustc --version --verbose)"
 printf '%s\n' "$identity"
 for expected in \
   'release: 1.99.0' \
@@ -14,16 +27,9 @@ for expected in \
   }
 done
 targets="$(rustup target list --installed --toolchain 1.99.0)"
-for target in aarch64-apple-ios aarch64-apple-ios-sim; do
+for target in aarch64-apple-darwin "$platform_target"; do
   grep -Fqx "$target" <<< "$targets" || {
     echo "The iOS Rust toolchain is missing $target" >&2
-    exit 1
-  }
-done
-components="$(rustup component list --installed --toolchain 1.99.0)"
-for component in clippy-aarch64-apple-darwin rustfmt-aarch64-apple-darwin; do
-  grep -Fqx "$component" <<< "$components" || {
-    echo "The iOS Rust toolchain is missing $component" >&2
     exit 1
   }
 done

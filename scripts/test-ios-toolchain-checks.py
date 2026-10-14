@@ -38,8 +38,9 @@ elif name == 'rustc':
     print('host: ' + ('x86_64-apple-darwin' if mode == 'wrong-host' else 'aarch64-apple-darwin'))
 elif name == 'rustup':
     if sys.argv[1] == 'target':
-        print('aarch64-apple-ios')
-        if mode != 'missing-target': print('aarch64-apple-ios-sim')
+        if mode != 'missing-host-target': print('aarch64-apple-darwin')
+        if mode not in ('missing-device', 'simulator-only'): print('aarch64-apple-ios')
+        if mode not in ('missing-simulator', 'device-only'): print('aarch64-apple-ios-sim')
     else:
         if mode != 'missing-clippy': print('clippy-aarch64-apple-darwin')
         print('rustfmt-aarch64-apple-darwin')
@@ -49,7 +50,7 @@ else:
 
 
 class ToolchainTests(unittest.TestCase):
-    def run_gate(self, script, mode=''):
+    def run_gate(self, script, mode='', args=(), toolchain='1.99.0'):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             for command in ('xcodebuild', 'xcrun', 'rustc', 'rustup'):
@@ -57,8 +58,8 @@ class ToolchainTests(unittest.TestCase):
                 path.write_text('#!' + sys.executable + '\n' + STUB)
                 path.chmod(0o755)
             env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
-                       PROBE_ROOT=str(root), PROBE_CASE=mode)
-            return subprocess.run(['bash', str(ROOT / script)], env=env,
+                       PROBE_ROOT=str(root), PROBE_CASE=mode, RUSTUP_TOOLCHAIN=toolchain)
+            return subprocess.run(['bash', str(ROOT / script), *args], env=env,
                                   capture_output=True, text=True, timeout=10)
 
     def test_sdk_probes_run_concurrently_and_valid_identity_passes(self):
@@ -79,15 +80,26 @@ class ToolchainTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.assertNotEqual(self.run_gate('verify-ios-toolchain.sh', mode).returncode, 0)
 
-    def test_actual_rust_identity_targets_and_components_pass(self):
-        result = self.run_gate('verify-ios-rust-toolchain.sh')
-        self.assertEqual(result.returncode, 0, result.stderr)
+    def test_each_lane_requires_only_host_and_its_platform_target(self):
+        for lane in ['simulator', 'device']:
+            result = self.run_gate('verify-ios-rust-toolchain.sh', lane + '-only', args=(lane,))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = self.run_gate('verify-ios-rust-toolchain.sh', 'missing-clippy', args=(lane,))
+            self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_cached_rust_identity_and_missing_components_fail_closed(self):
-        for mode in ('wrong-release', 'wrong-commit', 'wrong-host', 'missing-target', 'missing-clippy'):
-            with self.subTest(mode=mode):
-                result = self.run_gate('verify-ios-rust-toolchain.sh', mode)
-                self.assertNotEqual(result.returncode, 0, result.stderr)
+    def test_cached_rust_identity_and_required_targets_fail_closed(self):
+        for lane in ['simulator', 'device']:
+            for mode in ('wrong-release', 'wrong-commit', 'wrong-host', 'missing-host-target', 'missing-' + lane):
+                with self.subTest(lane=lane, mode=mode):
+                    result = self.run_gate('verify-ios-rust-toolchain.sh', mode, args=(lane,))
+                    self.assertNotEqual(result.returncode, 0, result.stderr)
+
+    def test_invalid_lane_and_unpinned_environment_fail_closed(self):
+        for args in [(), ('all',), ('invalid',), ('device', 'extra')]:
+            self.assertNotEqual(self.run_gate('verify-ios-rust-toolchain.sh', args=args).returncode, 0)
+        for toolchain in ['', 'stable', '1.98.0']:
+            self.assertNotEqual(self.run_gate('verify-ios-rust-toolchain.sh', args=('device',),
+                                             toolchain=toolchain).returncode, 0)
 
 
 if __name__ == '__main__':

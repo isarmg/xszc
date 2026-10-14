@@ -116,7 +116,13 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn('    needs:', lane)
             self.assertIn('./scripts/build-ios-rust.sh ' + mode, lane)
             self.assertIn('shared-key: ios27-' + mode + '-v1', lane)
-            self.assertIn('key: ios-toolchain-v1-', lane)
+            self.assertIn('key: ios-toolchain-v2-' + mode + '-', lane)
+            self.assertNotIn('restore-keys:', lane)
+            self.assertIn('RUSTUP_TOOLCHAIN: 1.99.0', lane)
+            target = 'aarch64-apple-ios-sim' if mode == 'simulator' else 'aarch64-apple-ios'
+            self.assertIn('targets: ' + target + '\n', lane)
+            self.assertNotIn('components:', lane)
+            self.assertIn('verify-ios-rust-toolchain.sh ' + mode + '\n', lane)
             for gate in ['verify-ios-rust-toolchain.sh', 'check-xcsc-source.py',
                          'verify-ios-toolchain.sh', 'ci-ios-prepare.sh wait', 'test-mobile-ffi-c.sh']:
                 self.assertIn(gate, lane)
@@ -136,6 +142,9 @@ class WorkflowTests(unittest.TestCase):
                           for p in (ROOT / 'clients/ios' / folder).glob('*.swift'))
             self.assertEqual(methods, expected)
         self.assertIn('python3 scripts/test-ci-ios-lanes.py', job('rust'))
+        self.assertIn('components: rustfmt,clippy', job('rust'))
+        self.assertIn('cargo fmt --all -- --check', job('rust'))
+        self.assertIn('cargo clippy --workspace --all-targets --locked -- -D warnings', job('rust'))
 
 
 if __name__ == '__main__':
