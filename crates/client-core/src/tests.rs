@@ -237,8 +237,9 @@ fn fresh_client_database_has_exact_current_metadata_and_schema() {
 }
 
 #[test]
-fn prior_revision_database_is_rejected_and_preserves_every_row() {
-    // Archived revision 1 is rejected in place; no migration/reset is performed.
+fn noncurrent_schema_database_is_rejected_and_preserves_every_row() {
+    // Matching revision numbers do not grant a different schema permission to
+    // open; its actual fingerprint and current table structure are required.
     assert_eq!(MOBILE_APPLICATION_VERSION, "1.0.0");
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("client.sqlite3");

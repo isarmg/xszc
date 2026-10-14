@@ -15,7 +15,7 @@ test -f crates/mobile-ffi/include/xszc_ffi_v1.h \
     || fail "the current ABI 1 C header is missing"
 test ! -e crates/mobile-ffi/include/xszc_v0_2_r1.h \
     || fail "the removed NUL-string C ABI header remains"
-if rg -n 'xszc_v0_2_r1|NativeBridgeV02|withCString|@_silgen_name' crates/mobile-ffi/src clients/ios/Xszc/RustClient.swift clients/android/app/src/main; then
+if grep -R -I -n -E 'xszc_v0_2_r1|NativeBridgeV02|withCString|@_silgen_name' crates/mobile-ffi/src clients/ios/Xszc/RustClient.swift clients/android/app/src/main; then
     fail "a removed mobile ABI implementation or caller remains"
 fi
 python3 scripts/check-mobile-header.py
@@ -67,7 +67,7 @@ for workflow in .github/workflows/build.yml .github/workflows/release.yml; do
         || fail "$workflow must verify stable Xcode 27 and iOS 27 SDKs"
     grep -q -F 'python3 scripts/package-ios-ipa.py' "$workflow" \
         || fail "$workflow must package the device app as an IPA"
-    grep -q -F 'path: dist/*.ipa' "$workflow" \
+    grep -q -E '^[[:space:]]*(path:[[:space:]]*)?dist/\*\.ipa[[:space:]]*$' "$workflow" \
         || fail "$workflow must upload the IPA artifact"
     grep -q -F 'runs-on: xcode-27' "$workflow" \
         || fail "$workflow must use the reviewed Xcode 27 image"

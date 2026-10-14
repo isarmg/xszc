@@ -19,7 +19,7 @@ mod sandbox_vfs;
 const APPLICATION: &str = "xszc";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const CURRENT_SCHEMA: &str = include_str!("../../../schema/mobile-current.sql");
-pub(super) const CURRENT_SCHEMA_REVISION: i64 = 2;
+pub(super) const CURRENT_SCHEMA_REVISION: i64 = 1;
 pub(super) const CURRENT_SCHEMA_SHA256: &str =
     "d1155d10ba6c71aeddb957cd02e4169cfb0813fbac21fa09a955d8a5d37768c3";
 const PRODUCT_METADATA_SQL: &str = "CREATE TABLE product_metadata (

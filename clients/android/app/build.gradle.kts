@@ -10,8 +10,8 @@ val emulatorTests = providers.gradleProperty("xszcEmulatorTests").orNull == "tru
 
 val semanticVersion = workspaceVersion.substringBefore('-').split('.').map(String::toInt)
 require(semanticVersion.size == 3) { "Workspace version must use major.minor.patch" }
-require(workspaceVersion == "1.1.5") {
-    "This release builds xszc 1.1.5"
+require(workspaceVersion == "1.0.0") {
+    "This release builds xszc 1.0.0"
 }
 
 val releasePkcs12Path = providers

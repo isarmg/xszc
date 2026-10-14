@@ -3,7 +3,7 @@ import Foundation
 enum MobileContractV1 {
     static let product = "xszc"
     static let applicationVersion = "1.0.0"
-    static let revision: UInt32 = 2
+    static let revision: UInt32 = 1
     static let stateEpoch = "xszc-mobile-v1"
 
     static let databaseFilename = "client-v1.sqlite"
@@ -24,7 +24,7 @@ enum MobileContractV1 {
               applicationVersion == self.applicationVersion,
               revision == self.revision,
               stateEpoch == self.stateEpoch else {
-            throw ClientFailure.message("Rust Client 返回了非当前 revision 2 合约")
+            throw ClientFailure.message("Rust Client 返回了非当前 revision 1 合约")
         }
     }
 }

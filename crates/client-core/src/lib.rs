@@ -60,7 +60,7 @@ impl ClientError {
 
 pub const MOBILE_PRODUCT: &str = "xszc";
 pub const MOBILE_APPLICATION_VERSION: &str = "1.0.0";
-pub const MOBILE_REVISION: u32 = 2;
+pub const MOBILE_REVISION: u32 = 1;
 pub const MOBILE_STATE_EPOCH: &str = "xszc-mobile-v1";
 pub const MOBILE_DATABASE_FILENAME: &str = "client-v1.sqlite";
 pub const MOBILE_STAGING_DIRECTORY: &str = "backup-staging-v1";

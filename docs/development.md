@@ -28,7 +28,7 @@ iOS 的工具链、构建、设备安装和原生测试见 [iOS 指南](platform
 
 ## 发布验证
 
-在干净且已取得对应标签的发行 checkout 执行 `./scripts/verify-release-version.sh v1.1.5`。正式工作流生成签名 Android APK、未签名 iOS IPA 和 `SHA256SUMS`。核对同一提交的主 CI、发布工作流及下载资产，再记录设备验收结果。
+在干净且已取得对应标签的发行 checkout 执行 `./scripts/verify-release-version.sh v1.0.0`。正式工作流生成签名 Android APK、未签名 iOS IPA 和 `SHA256SUMS`。核对同一提交的主 CI、发布工作流及下载资产，再记录设备验收结果。
 
 物料工具从 `build-tools-source.json` 固定的 `xssi` 提交取得，按实际 Cargo 目标与 feature、静态 SQLite 原始输入、Android `releaseRuntimeClasspath` 解析图及最终 DEX/原生库生成 SBOM。iOS 记录最终应用可执行文件。只接受当前干净源码和确实存在的构建输入；工具修订未固定时打包会明确失败。
 

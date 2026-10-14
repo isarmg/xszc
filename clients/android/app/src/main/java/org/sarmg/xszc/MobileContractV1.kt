@@ -5,7 +5,7 @@ import org.json.JSONObject
 object MobileContractV1 {
     const val PRODUCT = "xszc"
     const val APPLICATION_VERSION = "1.0.0"
-    const val REVISION = 2
+    const val REVISION = 1
     const val STATE_EPOCH = "xszc-mobile-v1"
 
     const val DATABASE_FILENAME = "client-v1.sqlite"

@@ -1,6 +1,6 @@
 # iOS：安装、构建与排障
 
-当前源码候选版本 **1.1.5**，仅支持最新稳定系统系列 iOS 27.0 及以上的设备。源码构建在 Mac 上完成；macOS 是开发环境，xszc 没有 macOS 桌面应用。当前候选尚未发布，下文下载链接指向已公开的 1.1.4；候选改动需同版源码构建。
+当前源码候选版本 **1.0.0**，仅支持最新稳定系统系列 iOS 27.0 及以上的设备。源码构建在 Mac 上完成；macOS 是开发环境，xszc 没有 macOS 桌面应用。当前候选尚未发布，下列包名用于同版源码构建或新基线发行完成后的资产；安装前确认发行已完成。
 
 安装后按[第一次备份](../getting-started.md)登录和验证。两端共享的备份设置、任务操作和数据维护分别见[配置](../configuration.md)、[日常使用](../usage.md)及[维护应用数据](../operations.md)。
 
@@ -8,10 +8,10 @@
 
 ### 安装发行包
 
-从 [v1.1.4 发行页](https://github.com/isarmg/xszc/releases/tag/v1.1.4)下载 `xszc-ios-1.1.4-unsigned.ipa` 与 `SHA256SUMS`。IPA 未签名。先计算 SHA-256，与同版 `SHA256SUMS` 对应行核对：
+从 [v1.0.0 发行页](https://github.com/isarmg/xszc/releases/tag/v1.0.0)下载 `xszc-ios-1.0.0-unsigned.ipa` 与 `SHA256SUMS`。IPA 未签名。先计算 SHA-256，与同版 `SHA256SUMS` 对应行核对：
 
 ```sh
-shasum -a 256 ./xszc-ios-1.1.4-unsigned.ipa
+shasum -a 256 ./xszc-ios-1.0.0-unsigned.ipa
 ```
 
 使用自己的有效 Apple 签名身份和适用于目标设备的 provisioning 完成签名，再通过 Xcode、Apple Configurator 或已有受管理部署流程安装。仓库提供未签名包，具体证书与设备准入由所选 Apple 部署方式决定。

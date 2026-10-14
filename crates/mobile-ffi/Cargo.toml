@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib"]
 xszc-core = { path = "../client-core" }
 xszc-crypto = { path = "../crypto" }
 serde_json.workspace = true
-xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "c0cf985f82663199e270112a72bbf54ce48ff415", version = "=1.0.5", features = ["mobile-ffi"] }
+xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "6fca4299f5c34a79db1c7bd4e889b418d2a58e2d", version = "=1.0.0", features = ["mobile-ffi"] }
 jni = { workspace = true, optional = true }
 
 [features]
@@ -21,11 +21,11 @@ jni-host-tests = ["dep:jni", "xcsc/jni"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni.workspace = true
-xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "c0cf985f82663199e270112a72bbf54ce48ff415", version = "=1.0.5", features = ["jni", "mobile-ffi"] }
+xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "6fca4299f5c34a79db1c7bd4e889b418d2a58e2d", version = "=1.0.0", features = ["jni", "mobile-ffi"] }
 
 [dev-dependencies]
 jni.workspace = true
-xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "c0cf985f82663199e270112a72bbf54ce48ff415", version = "=1.0.5", features = ["jni", "mobile-ffi"] }
+xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "6fca4299f5c34a79db1c7bd4e889b418d2a58e2d", version = "=1.0.0", features = ["jni", "mobile-ffi"] }
 tempfile.workspace = true
 
 [lints]

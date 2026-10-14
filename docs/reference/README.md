@@ -15,6 +15,6 @@
 - [公共支撑](../common-support.md)
 - [Android 签名](../android-signing.md)
 - [依赖和 unsafe 审查](../unsafe-audit.md)
-- [1.1.0 发布说明](../releases/1.1.0.md)
+- [1.0.0 当前基线说明](../releases/1.0.0.md)
 
 用户任务见[文档首页](../README.md)。服务端内部实现、配置和管理 API 由 [xszs 文档](https://github.com/isarmg/xszs/tree/main/docs)维护。

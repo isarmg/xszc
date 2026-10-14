@@ -1,6 +1,6 @@
 # 客户端功能索引
 
-本页索引 xszc 当前源码候选 1.1.5 的实际移动功能。详细使用步骤见[日常使用](usage.md)，实现预算和验收场景见[备份与图库参考](manual-backup-implementation.md)。
+本页索引 xszc 当前源码候选 1.0.0 的实际移动功能。详细使用步骤见[日常使用](usage.md)，实现预算和验收场景见[备份与图库参考](manual-backup-implementation.md)。
 
 | 功能 | 使用入口 | 主要实现 |
 |---|---|---|

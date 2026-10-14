@@ -68,7 +68,7 @@ final class RustClientABITests: XCTestCase {
             XCTAssertEqual(original.profile, repaired.profile)
             XCTAssertEqual(try original.store.batches().count, 1)
             let binding = try original.store.client.transfer(["op": "binding"]) as? [String: Any]
-            XCTAssertEqual(binding?["account_id"] as? String, account.uuidString)
+            XCTAssertEqual((binding?["account_id"] as? String).flatMap(UUID.init(uuidString:)), account)
             XCTAssertThrowsError(try pair(nextCode, accountId: replacement))
         }
     }
