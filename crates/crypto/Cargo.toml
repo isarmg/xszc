@@ -8,7 +8,7 @@ license.workspace = true
 
 [dependencies]
 blake3.workspace = true
-xszs-protocol = { git = "https://github.com/isarmg/xszs.git", rev = "4e6f7547c60c75bb1a138bbc9faeae3ebdba621e", version = "=1.0.0" }
+xszs-protocol = { git = "https://github.com/isarmg/xszs.git", rev = "f5a2126f5008615f0fd6bd76e3e0378ee9600d54", version = "=1.0.0" }
 thiserror.workspace = true
 
 [lints]
