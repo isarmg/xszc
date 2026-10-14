@@ -75,6 +75,58 @@ class SliceTests(unittest.TestCase):
         self.assertNotIn('xcodebuild:', log)
 
 
+class SeedTimingTests(unittest.TestCase):
+    def run_seed(self, fail=''):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'bin').mkdir()
+            assets = root / 'clients/android/app/src/androidTest/assets'
+            assets.mkdir(parents=True)
+            (assets / 'video-preview.mp4').write_bytes(b'test-video')
+            command = root / 'bin/xcrun'
+            command.write_text('''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+args = sys.argv[1:]
+with open(os.environ['PROBE_LOG'], 'a') as log:
+    log.write(json.dumps(args) + "\\n")
+if args[:4] == ['simctl', 'list', 'devices', 'booted']:
+    print(json.dumps({'devices': {'test': [{'udid': 'test-device'}]}}))
+if args[:2] == ['simctl', 'addmedia'] and any('gallery-page-' in arg for arg in args):
+    sys.exit(7 if os.environ['FAIL_IMPORT'] else 0)
+''')
+            command.chmod(0o755)
+            log = root / 'calls'
+            env = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'],
+                       RUNNER_TEMP=str(root), PROBE_LOG=str(log), FAIL_IMPORT=fail)
+            result = subprocess.run(['bash', str(ROOT / 'scripts/seed-ios-ui.sh'), 'test-device'],
+                                    cwd=root, env=env, capture_output=True, text=True, timeout=15)
+            import json
+            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            return result, calls
+
+    def test_timing_preserves_all_inputs_and_import_order(self):
+        result, calls = self.run_seed()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        imports = [call[3:] for call in calls if call[:2] == ['simctl', 'addmedia']]
+        self.assertEqual(len(imports), 10)
+        self.assertEqual([Path(p).name for p in imports[0]],
+                         ['gallery-page-%03d.png' % i for i in range(1, 302)])
+        self.assertEqual(Path(imports[1][0]).name, 'layout-video.mp4')
+        self.assertEqual([Path(group[0]).name for group in imports[2:]],
+                         ['layout-photo-%d.png' % i for i in range(8, 0, -1)])
+        for phase in ['generate-photos', 'bootstatus', 'import-gallery-pages', 'import-video',
+                      'reset-photos-privacy', *['import-photo-%d' % i for i in range(8, 0, -1)]]:
+            self.assertRegex(result.stdout, 'iOS fixture phase ' + phase + r' finished after \d+s: exit 0')
+
+    def test_import_failure_reports_status_and_stops_remaining_phases(self):
+        result, calls = self.run_seed(fail='yes')
+        self.assertEqual(result.returncode, 7)
+        self.assertIn('exit 7', result.stdout)
+        self.assertEqual(sum(call[:2] == ['simctl', 'addmedia'] for call in calls), 1)
+        self.assertNotIn('import-video started', result.stdout)
+
+
 class WorkflowTests(unittest.TestCase):
     def test_aggregate_requires_both_exact_success_results(self):
         aggregate = job('ios')
@@ -116,7 +168,13 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn('    needs:', lane)
             self.assertIn('./scripts/build-ios-rust.sh ' + mode, lane)
             self.assertIn('shared-key: ios27-' + mode + '-v1', lane)
-            self.assertIn('key: ios-toolchain-v2-' + mode + '-', lane)
+            if mode == 'device':
+                self.assertIn('key: ios-toolchain-v2-device-', lane)
+            else:
+                self.assertNotIn('uses: actions/cache@', lane)
+                self.assertNotIn('~/.rustup/toolchains/', lane)
+            self.assertIn('uses: dtolnay/rust-toolchain@', lane)
+            self.assertIn('toolchain: 1.99.0', lane)
             self.assertNotIn('restore-keys:', lane)
             self.assertIn('RUSTUP_TOOLCHAIN: 1.99.0', lane)
             target = 'aarch64-apple-ios-sim' if mode == 'simulator' else 'aarch64-apple-ios'
