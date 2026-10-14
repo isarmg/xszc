@@ -166,6 +166,7 @@ struct LocalPhotoChanges: @unchecked Sendable {
 }
 private final class LocalPhotoLibraryChanges: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
     @Published var revision = 0
+    private static let log = Logger(subsystem: "org.sarmg.xszc", category: "PhotoLibraryChanges")
     @MainActor private var assets: PHFetchResult<PHAsset>?
     @MainActor private var collections: PHFetchResult<PHAssetCollection>?
     @MainActor private var libraryAlbums: PHFetchResult<PHAssetCollection>?
@@ -175,11 +176,15 @@ private final class LocalPhotoLibraryChanges: NSObject, ObservableObject, PHPhot
     @MainActor private var albumsChanged = false
     override init() { super.init(); PHPhotoLibrary.shared().register(self) }
     deinit { PHPhotoLibrary.shared().unregisterChangeObserver(self) }
-    @MainActor func trackLibrary() {
+    // Cached directory readiness does not imply this observer has fetch results.
+    // Idempotence preserves pending changes when another load is already queued.
+    @MainActor func ensureTracking() -> Bool {
+        guard assets == nil else { return false }
         assets = PHAsset.fetchAssets(with: nil)
         collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: nil)
         libraryAlbums = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .smartAlbumUserLibrary, options: nil)
-        updated = [:]; removed = []; fullScan = false; albumsChanged = false
+        Self.log.info("photo tracking initialized with \(self.assets?.count ?? 0) assets")
+        return true
     }
     @MainActor func takeChanges() -> LocalPhotoChanges {
         let result = LocalPhotoChanges(updated: Array(updated.values), removed: Array(removed), fullScan: fullScan, albumsChanged: albumsChanged)
@@ -205,6 +210,7 @@ private final class LocalPhotoLibraryChanges: NSObject, ObservableObject, PHPhot
             if let libraryAlbums, let details = changeInstance.changeDetails(for: libraryAlbums) {
                 self.libraryAlbums = details.fetchResultAfterChanges; albumsChanged = true; changed = true
             }
+            Self.log.info("photo change matched \(changed), updated \(self.updated.count), removed \(self.removed.count), full scan \(self.fullScan)")
             if changed { revision += 1 }
         }
     }
@@ -322,7 +328,6 @@ struct LocalGalleryScreen: View {
                 _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
             }
             authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-            if firstLoad { photoChanges.trackLibrary() }
             await load(scan: firstLoad)
         }
         .onChange(of: photoChanges.revision) { _, _ in Task { await load() } }
@@ -531,6 +536,7 @@ struct LocalGalleryScreen: View {
             directory = LocalGalleryDirectory(); details.stop(); resetSelection(); albums = []; loadedQuery = nil
             return
         }
+        let startedTracking = photoChanges.ensureTracking()
         do {
             let store = try coordinator.store()
             func current() -> Bool { query == LocalGalleryQuery(profile: coordinator.profile, album: album, kind: kind, unbacked: unbacked) }
@@ -544,9 +550,9 @@ struct LocalGalleryScreen: View {
             if status == .authorized { try await readDirectory() }
             else { directory = LocalGalleryDirectory(); details.stop() }
             if changingFilter { scrollAnchor = directory.entries.first?.id }
-            guard current() else { queuedRefresh = true; queuedScan = queuedScan || scan; return }
+            guard current() else { queuedRefresh = true; queuedScan = queuedScan || scan || startedTracking; return }
             let change = photoChanges.takeChanges()
-            let full = scan || status == .limited || change.fullScan || (query.album != nil && change.albumsChanged)
+            let full = scan || startedTracking || status == .limited || change.fullScan || (query.album != nil && change.albumsChanged)
             if full {
                 albums = try await Task.detached { try LocalCatalog.scan(store: store, album: query.album) }.value
             } else if !change.updated.isEmpty || !change.removed.isEmpty {

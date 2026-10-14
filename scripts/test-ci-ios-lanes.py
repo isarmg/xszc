@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise slice builds, the exact aggregate shell, and full test wiring."""
 import itertools
+import sys
 import os
 from pathlib import Path
 import re
@@ -125,6 +126,35 @@ if args[:2] == ['simctl', 'addmedia'] and any('gallery-page-' in arg for arg in 
         self.assertIn('exit 7', result.stdout)
         self.assertEqual(sum(call[:2] == ['simctl', 'addmedia'] for call in calls), 1)
         self.assertNotIn('import-video started', result.stdout)
+
+
+class LivePhotoImportTests(unittest.TestCase):
+    def test_real_runner_logs_import_success_and_failure_without_changing_tests(self):
+        for status in (0, 7):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                xcrun = root / 'xcrun'
+                xcrun.write_text('#!/bin/sh\nprintf "%s\\n" "$*" > "$IMPORT_ARGS"\nexit ' + str(status) + '\n')
+                xcrun.chmod(0o755)
+                # Exercise run_tests itself with a child producer and real pipe;
+                # substitute only the unavailable simulator command.
+                producer = root / 'producer.py'
+                producer.write_text('import time\nprint("XSZC_UI_READY_FOR_PHOTO_CHANGE", flush=True)\ntime.sleep(0.2)\n')
+                driver = root / 'driver.py'
+                driver.write_text(
+                    'import importlib.util, pathlib, sys\n'
+                    'spec = importlib.util.spec_from_file_location("ui", ' + repr(str(ROOT / 'scripts/test-ios-ui.py')) + ')\n'
+                    'ui = importlib.util.module_from_spec(spec); spec.loader.exec_module(ui)\n'
+                    'sys.exit(ui.run_tests([sys.executable, ' + repr(str(producer)) + '], "test-device", pathlib.Path("fixture.png")))\n')
+                env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
+                           IMPORT_ARGS=str(root / 'args'))
+                result = subprocess.run([sys.executable, str(driver)], env=env,
+                                        capture_output=True, text=True, timeout=5)
+                self.assertEqual(result.returncode == 0, status == 0)
+                self.assertEqual((root / 'args').read_text().strip(),
+                                 'simctl addmedia test-device fixture.png')
+                self.assertIn('iOS live photo import started', result.stdout)
+                self.assertIn('iOS live photo import ' + ('finished' if status == 0 else 'failed') + ' after', result.stdout)
 
 
 class WorkflowTests(unittest.TestCase):

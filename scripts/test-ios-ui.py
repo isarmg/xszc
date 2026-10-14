@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import time
 
 
 def main():
@@ -43,10 +44,14 @@ def run_tests(command, simulator, refreshed_photo):
         imported = None
 
         def import_photo():
+            started = time.monotonic()
+            print("iOS live photo import started", flush=True)
             try:
                 subprocess.run(["xcrun", "simctl", "addmedia", simulator,
                                 str(refreshed_photo)], check=True, timeout=30)
+                print(f"iOS live photo import finished after {time.monotonic() - started:.3f}s", flush=True)
             except BaseException:
+                print(f"iOS live photo import failed after {time.monotonic() - started:.3f}s", flush=True)
                 test.terminate()
                 raise
 

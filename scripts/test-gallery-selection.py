@@ -329,6 +329,56 @@ class SelectionRegressionTests(unittest.TestCase):
         self.assertIn('entryGeneration += 1', block(source, 'func filtersChanged'))
 
 
+class PhotoObserverLifecycleTests(unittest.TestCase):
+    def test_tracking_initializes_without_directory_readiness_and_preserves_pending_changes(self):
+        source = IOS.read_text()
+        ensure = block(source, 'func ensureTracking()')
+        self.assertIn('guard assets == nil else { return false }', ensure)
+        # Execute the source guard for both lifecycle orderings. The fetch calls
+        # are substituted; this is a source-level regression, not PhotoKit QA.
+        predicate = re.search(r'guard (.*?) else', ensure).group(1)
+        assignments = re.findall(r'^        (assets|collections|libraryAlbums) = ', ensure, re.M)
+        self.assertEqual(assignments, ['assets', 'collections', 'libraryAlbums'])
+        self.assertNotRegex(ensure, r'(updated|removed|fullScan|albumsChanged)\s*=')
+        self.assertIn('return true', ensure)
+        for cached_directory in (False, True):
+            state = dict(assets=None, collections=None, libraryAlbums=None,
+                         updated={'pending': 'asset'}, removed={'deleted'},
+                         fullScan=True, albumsChanged=True)
+            def run_ensure():
+                if not eval(predicate.replace('nil', 'None'), {'__builtins__': {}}, state):
+                    return False
+                for name in assignments:
+                    state[name] = object()
+                return True
+            with self.subTest(cached_directory=cached_directory):
+                startedTracking = run_ensure()
+                self.assertTrue(startedTracking)
+                # A scene-phase load may already have a persisted directory;
+                # that cannot suppress the initial reconciliation.
+                full_prefix = re.search(r'let full = (.*?) \|\| status', source).group(1)
+                self.assertTrue(eval(full_prefix.replace('||', ' or '),
+                                     {'__builtins__': {}},
+                                     dict(scan=not cached_directory, startedTracking=startedTracking)))
+                first_assets = state['assets']
+                self.assertFalse(run_ensure())
+                self.assertIs(state['assets'], first_assets)
+                self.assertEqual(state['updated'], {'pending': 'asset'})
+                self.assertEqual(state['removed'], {'deleted'})
+                self.assertTrue(state['fullScan'])
+                self.assertTrue(state['albumsChanged'])
+        load = block(source, 'private func load(scan:')
+        self.assertIn('let startedTracking = photoChanges.ensureTracking()', load)
+        self.assertLess(load.index('guard status == .authorized || status == .limited'),
+                        load.index('photoChanges.ensureTracking()'))
+        self.assertLess(load.index('photoChanges.ensureTracking()'), load.index('try await readDirectory()'))
+        self.assertNotIn('firstLoad', load[:load.index('photoChanges.ensureTracking()')])
+        self.assertIn('let full = scan || startedTracking || status == .limited || change.fullScan', load)
+        self.assertIn('queuedScan = queuedScan || scan || startedTracking', load)
+        self.assertIn('await load(scan: firstLoad)', source)
+        self.assertNotIn('trackLibrary()', source)
+
+
 class UIScrollProbeTests(unittest.TestCase):
     def test_missing_tiles_do_not_resolve_hittability_before_scrolling(self):
         source = (args.root / 'clients/ios/XszcUITests/NavigationTests.swift').read_text()
