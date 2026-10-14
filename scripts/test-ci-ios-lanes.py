@@ -289,7 +289,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn('package-ios-ipa.py', simulator)
         self.assertIn('package-ios-ipa.py', device)
         self.assertIn('CODE_SIGNING_ALLOWED=NO', device)
-        for folder, expected in [('XszcTests', 61), ('XszcUITests', 9)]:
+        for folder, expected in [('XszcTests', 63), ('XszcUITests', 9)]:
             methods = sum(len(re.findall(r'\bfunc test\w+\s*\(', p.read_text()))
                           for p in (ROOT / 'clients/ios' / folder).glob('*.swift'))
             self.assertEqual(methods, expected)
