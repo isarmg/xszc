@@ -1144,3 +1144,133 @@ fn cancelling_and_restoring_a_batch_preserves_count_and_shared_automatic_work() 
         selected
     );
 }
+
+#[test]
+fn automatic_enqueue_after_export_cannot_reactivate_an_excluded_asset() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo.jpg");
+    fs::write(&source, b"12345678").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    // A scanner has checked exclusion, then exports outside the database lock.
+    assert_eq!(
+        client
+            .gallery(
+                serde_json::from_value(json!({
+                    "op":"is_excluded", "source_id":"asset"
+                }))
+                .unwrap()
+            )
+            .unwrap(),
+        false
+    );
+    client
+        .gallery(
+            serde_json::from_value(json!({
+                "op":"exclude", "source_id":"asset", "excluded":true
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    let id = client.enqueue(resource(&source, None)).unwrap();
+    assert_eq!(
+        client
+            .transfer(request(json!({"op":"active", "job_id":id})))
+            .unwrap(),
+        false
+    );
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    // Explicit manual selection still overrides automatic exclusion.
+    let selected = batch(&client);
+    assert_eq!(
+        client.enqueue(resource(&source, Some(&selected))).unwrap(),
+        id
+    );
+    assert_eq!(client.next_prepared(&staging).unwrap().unwrap().job_id, id);
+    client
+        .transfer(request(json!({"op":"cancel_batch", "batch_id":selected})))
+        .unwrap();
+    // Repeated scanner delivery must not restore the automatic ownership either.
+    assert_eq!(client.enqueue(resource(&source, None)).unwrap(), id);
+    assert_eq!(
+        client
+            .transfer(request(json!({"op":"active", "job_id":id})))
+            .unwrap(),
+        false
+    );
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+}
+
+#[test]
+fn excluded_completed_thumbnail_refresh_cannot_restore_automatic_ownership() {
+    let root = tempfile::tempdir().unwrap();
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    let source = root.path().join("thumbnail.jpg");
+    fs::write(&source, b"old-data").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    let mut input = resource(&source, None);
+    input.role = "thumbnail".into();
+    input.source_resource_id = "thumbnail".into();
+    input.metadata_json = Some(json!({"source_size": 8}).to_string());
+    let id = client.enqueue(input.clone()).unwrap();
+    let prepared = client.next_prepared(&staging).unwrap().unwrap();
+    client
+        .transfer(request(
+            json!({"op":"bind","server":"https://backup.example",
+        "account_id":Uuid::new_v4(),"device_id":Uuid::new_v4()}),
+        ))
+        .unwrap();
+    client
+        .transfer(request(json!({"op":"receipt","job_id":id,
+        "asset_id":Uuid::new_v4(),"resource_id":Uuid::new_v4(),
+        "content_blake3":prepared.request.content_blake3})))
+        .unwrap();
+    client.mark_complete(&id).unwrap();
+    client
+        .transfer(request(json!({"op":"gallery","command":{
+        "op":"exclude","source_id":"asset","excluded":true}})))
+        .unwrap();
+    // Re-enqueueing unchanged completed content must preserve its receipt.
+    assert_eq!(client.enqueue(input.clone()).unwrap(), id);
+    assert_eq!(client.stats().unwrap().complete, 1);
+    let receipts: i64 = client
+        .lock_connection()
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM backup_receipts WHERE job_id=?1",
+            [&id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(receipts, 1);
+    // The export in flight can produce a same-length thumbnail of a changed parent.
+    fs::write(&source, b"new-data").unwrap();
+    input.metadata_json = Some(json!({"source_size": 9}).to_string());
+    assert_eq!(client.enqueue(input.clone()).unwrap(), id);
+    assert_eq!(
+        client
+            .transfer(request(json!({"op":"active","job_id":id})))
+            .unwrap(),
+        false
+    );
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    // Manual ownership is independent of the exclusion and can upload the refresh.
+    let selected = batch(&client);
+    input.batch_id = Some(selected.clone());
+    input.batch_item_id = Some("selected".into());
+    assert_eq!(client.enqueue(input).unwrap(), id);
+    let refreshed = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(
+        refreshed.request.content_blake3,
+        blake3::hash(b"new-data").to_hex().to_string()
+    );
+    client
+        .transfer(request(json!({"op":"cancel_batch","batch_id":selected})))
+        .unwrap();
+    assert_eq!(
+        client
+            .transfer(request(json!({"op":"active","job_id":id})))
+            .unwrap(),
+        false
+    );
+}

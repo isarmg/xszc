@@ -35,7 +35,22 @@ final class BackgroundUploader: NSObject, URLSessionDataDelegate {
     private var errorBodies: [Int: Data] = [:]
     private var lastProgressUpdates: [Int: TimeInterval] = [:]
 
-    func cancel() { session.invalidateAndCancel() }
+    private var cancelled = false
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+        session.invalidateAndCancel()
+    }
+
+    private func checkCancellation() throws {
+        try Task.checkCancellation()
+        lock.lock()
+        let stopped = cancelled
+        lock.unlock()
+        guard !stopped else { throw CancellationError() }
+    }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
         newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 
@@ -125,7 +140,9 @@ final class BackgroundUploader: NSObject, URLSessionDataDelegate {
     }
 
     private func ensureActive(jobId: String) throws {
-        try Task.checkCancellation()
+        // Control requests use SecureSession, so invalidating the background
+        // part session alone cannot stop a resumed create/complete operation.
+        try checkCancellation()
         guard try client.transfer(["op": "active", "job_id": jobId]) as? Bool == true else {
             throw CancellationError()
         }
@@ -133,6 +150,7 @@ final class BackgroundUploader: NSObject, URLSessionDataDelegate {
 
     func syncAlbum(id: String, name: String, assetIds: Set<String>, replaceMembers: Bool) async throws {
         try await AlbumSyncBatch.send(id: id, name: name, assetIds: assetIds, replaceMembers: replaceMembers) { body in
+            try checkCancellation()
             var request = authorized(path: "/v1/albums", method: "POST")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = body
@@ -188,6 +206,7 @@ final class BackgroundUploader: NSObject, URLSessionDataDelegate {
         guard let completed = try JSONSerialization.jsonObject(with: data) as? [String: Any],
             let resource = completed["resource_id"] as? String,
             let asset = completed["asset_id"] as? String else { throw UploadFailure.invalidResponse }
+        try ensureActive(jobId: job.jobId)
         let (manifest, manifestResponse) = try await SecureSession.shared.data(for: authorized(
             path: "/v1/resources/\(resource)", method: "GET"))
         try UploadHTTPFailure.requireSuccess(manifestResponse, data: manifest)

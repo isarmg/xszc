@@ -305,6 +305,14 @@ impl Client {
         }
         let mut connection = self.lock_connection()?;
         let mut tx = connection.transaction()?;
+        // Export happens outside this transaction. Recheck exclusion here so a
+        // scanner cannot restore automatic ownership after the user disables it.
+        let excluded = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM automatic_exclusions WHERE source_id=?1)",
+            params![input.source_asset_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        let automatic = input.batch_id.is_none() && !excluded;
         let existing: Option<(String, String, String, String, Option<String>)> = tx.query_row(
             "SELECT id,file_path,state,role,metadata_json FROM jobs WHERE source_asset_id = ?1 AND source_resource_id = ?2 AND modified_ms = ?3 AND source_size = ?4",
             params![input.source_asset_id, input.source_resource_id, input.modified_ms, input.source_size],
@@ -320,11 +328,11 @@ impl Client {
                 remove_source_after_prepare, state, updated_at_ms, automatic)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'discovered', ?14, ?15)
              ON CONFLICT(source_asset_id, source_resource_id, modified_ms, source_size) DO UPDATE SET
-                automatic = MAX(jobs.automatic, excluded.automatic)",
+                automatic = CASE WHEN ?16 THEN 0 ELSE MAX(jobs.automatic, excluded.automatic) END",
             params![id, input.source_asset_id, input.source_resource_id, input.media_kind, input.role,
                 input.file_path, input.filename, input.mime_type, input.source_created_at_ms,
                 input.modified_ms, input.source_size, input.metadata_json, input.remove_source_after_prepare,
-                now_ms(), input.batch_id.is_none()],
+                now_ms(), automatic, excluded],
         )?;
         if let (Some(batch), Some(item)) = (&input.batch_id, &input.batch_item_id) {
             tx.execute(
