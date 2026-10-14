@@ -77,19 +77,58 @@ enum LocalCatalog {
         let fetch = PHAsset.fetchAssets(with: nil)
         log.info("catalog fetched \(fetch.count) assets")
         var page: [[String: Any]] = []
+#if DEBUG
+        var enumerationSeconds = 0.0
+        var resourceSeconds = 0.0
+        log.debug("catalog asset enumeration and resource lookup started")
+#endif
         for index in 0..<fetch.count {
+#if DEBUG
+            let enumerationStarted = ProcessInfo.processInfo.systemUptime
+#endif
             let asset = fetch.object(at: index)
+#if DEBUG
+            enumerationSeconds += ProcessInfo.processInfo.systemUptime - enumerationStarted
+#endif
             guard asset.mediaType == .image || asset.mediaType == .video else { continue }
+#if DEBUG
+            let resourceStarted = ProcessInfo.processInfo.systemUptime
+#endif
             let name = PHAssetResource.assetResources(for: asset).first?.originalFilename ?? "媒体"
+#if DEBUG
+            resourceSeconds += ProcessInfo.processInfo.systemUptime - resourceStarted
+            if (index + 1) % 50 == 0 || index + 1 == fetch.count {
+                log.debug("catalog progress \(index + 1, privacy: .public)/\(fetch.count, privacy: .public); enumeration \(enumerationSeconds, privacy: .public)s; resources \(resourceSeconds, privacy: .public)s")
+            }
+#endif
             let descriptor = try JSONSerialization.data(withJSONObject: ["kind": "photokit", "id": asset.localIdentifier, "name": name])
             page.append(["source_id": asset.localIdentifier, "name": name, "media_kind": asset.mediaType == .video ? "video" : "photo",
                 "album_id": selectedMembers.contains(asset.localIdentifier) ? (album ?? "") : "",
                 "created_ms": Int64((asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
                 "modified_ms": Int64((asset.modificationDate ?? asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
                 "size": 0, "descriptor": String(decoding: descriptor, as: UTF8.self)])
-            if page.count == 200 { try store.gallery(["op": "catalog", "items": page]); page.removeAll(keepingCapacity: true) }
+            if page.count == 200 {
+#if DEBUG
+                let writeStarted = ProcessInfo.processInfo.systemUptime
+                log.debug("catalog batch write started: \(page.count, privacy: .public) rows")
+#endif
+                try store.gallery(["op": "catalog", "items": page])
+#if DEBUG
+                log.debug("catalog batch write finished after \(ProcessInfo.processInfo.systemUptime - writeStarted, privacy: .public)s")
+#endif
+                page.removeAll(keepingCapacity: true)
+            }
         }
-        if !page.isEmpty { try store.gallery(["op": "catalog", "items": page]) }
+        if !page.isEmpty {
+#if DEBUG
+            let writeStarted = ProcessInfo.processInfo.systemUptime
+            log.debug("catalog batch write started: \(page.count, privacy: .public) rows")
+#endif
+            try store.gallery(["op": "catalog", "items": page])
+#if DEBUG
+            log.debug("catalog batch write finished after \(ProcessInfo.processInfo.systemUptime - writeStarted, privacy: .public)s")
+#endif
+        }
         log.info("catalog stored; reading albums")
         let albums = PhotoScanner().albums()
         try store.gallery(["op": "finish_catalog"])

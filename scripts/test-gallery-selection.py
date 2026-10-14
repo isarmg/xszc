@@ -436,5 +436,30 @@ class UIScrollProbeTests(unittest.TestCase):
                     self.assertEqual(result, expected)
 
 
+class CatalogDiagnosticsTests(unittest.TestCase):
+    def test_diagnostics_are_debug_only_numeric_and_batched(self):
+        source = block(IOS.read_text(), 'static func scan(store:')
+        debug = re.findall(r'#if DEBUG\n(.*?)#endif', source, re.S)
+        self.assertTrue(debug)
+        release = re.sub(r'#if DEBUG\n.*?#endif\n', '', source, flags=re.S)
+        self.assertNotIn('log.debug', release)
+        self.assertNotIn('systemUptime', release)
+        self.assertIn('(index + 1) % 50 == 0 || index + 1 == fetch.count', source)
+        self.assertIn('enumerationSeconds += ProcessInfo.processInfo.systemUptime - enumerationStarted', source)
+        self.assertIn('resourceSeconds += ProcessInfo.processInfo.systemUptime - resourceStarted', source)
+        self.assertEqual(source.count('catalog batch write started:'), 2)
+        self.assertEqual(source.count('catalog batch write finished after'), 2)
+        for line in source.splitlines():
+            if 'log.debug' in line:
+                if '\\(' in line:
+                    self.assertEqual(line.count('\\('), line.count('privacy: .public'))
+                for sensitive in ('localIdentifier', 'originalFilename', 'descriptor', 'name)', 'path'):
+                    self.assertNotIn(sensitive, line)
+        self.assertEqual(release.count('PHAssetResource.assetResources(for: asset)'), 1)
+        self.assertEqual(release.count('try store.gallery(["op": "catalog", "items": page])'), 2)
+        self.assertIn('if page.count == 200', release)
+        self.assertNotRegex(release, r'sleep|timeout')
+
+
 if __name__ == '__main__':
     unittest.main(argv=[__file__, *remaining])
