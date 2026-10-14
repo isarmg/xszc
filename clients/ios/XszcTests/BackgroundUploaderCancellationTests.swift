@@ -16,7 +16,7 @@ final class BackgroundUploaderCancellationTests: XCTestCase {
         return PreparedJob(product: MobileContractV1.product,
             applicationVersion: MobileContractV1.applicationVersion,
             revision: MobileContractV1.revision, stateEpoch: MobileContractV1.stateEpoch,
-            jobId: jobId, generationId: UUID().uuidString,
+            jobId: jobId, generationId: UUID().uuidString, uploadOperationHeader: "x-upload-operation",
             request: CreateUpload(sourceAssetId: "photo", sourceResourceId: "original",
                 mediaKind: "photo", role: "primary", filename: "photo.jpg", mimeType: "image/jpeg",
                 sourceCreatedAtMs: 0, storageEncoding: .plainV1, contentSize: 0,
@@ -33,6 +33,7 @@ final class BackgroundUploaderCancellationTests: XCTestCase {
         let encoded = try encoder.encode(original)
         let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         XCTAssertEqual(fields["generation_id"] as? String, original.generationId)
+        XCTAssertEqual(fields["upload_operation_header"] as? String, "x-upload-operation")
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let restored = try decoder.decode(PreparedJob.self, from: encoded)
@@ -51,6 +52,31 @@ final class BackgroundUploaderCancellationTests: XCTestCase {
         }
         XCTAssertNotEqual(try upload.createUploadRequest(preparedJob(jobId: original.jobId))
             .value(forHTTPHeaderField: "X-Upload-Operation"), original.generationId)
+    }
+
+    func testCreateBindsHeaderNameSuppliedByRust() throws {
+        let upload = try uploader()
+        defer { upload.cancel() }
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(preparedJob())) as? [String: Any])
+        fields["upload_operation_header"] = "X-Fixture-Operation"
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let job = try decoder.decode(PreparedJob.self, from: JSONSerialization.data(withJSONObject: fields))
+        let request = try upload.createUploadRequest(job)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Fixture-Operation"), job.generationId)
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-Upload-Operation"))
+    }
+
+    func testMissingUploadHTTPMetadataFailsDecoding() throws {
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        var fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(preparedJob())) as? [String: Any])
+        fields.removeValue(forKey: "upload_operation_header")
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        XCTAssertThrowsError(try decoder.decode(PreparedJob.self, from: JSONSerialization.data(withJSONObject: fields)))
     }
 
     func testExplicitStopRejectsSubmitWithoutCancellingOwningTask() async throws {

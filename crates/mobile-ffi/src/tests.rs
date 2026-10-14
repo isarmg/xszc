@@ -196,3 +196,50 @@ fn invalid_input_and_identity_are_rejected_without_filesystem_writes() {
     }
     assert!(!dir.path().join("absent").exists());
 }
+
+#[test]
+fn next_exports_current_http_header_without_persisting_transport_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    let database = dir.path().join(MOBILE_DATABASE_FILENAME);
+    let staging = dir.path().join(MOBILE_STAGING_DIRECTORY);
+    let source = dir.path().join("source.jpg");
+    std::fs::write(&source, b"photo bytes").unwrap();
+    let handle = open_impl(database.to_str().unwrap(), &config()).unwrap();
+    assert!(next_impl(handle, staging.to_str().unwrap())
+        .unwrap()
+        .is_null());
+    let mut input = current_enqueue_json();
+    input["file_path"] = json!(source.to_str().unwrap());
+    input["source_size"] = json!(11);
+    enqueue_impl(handle, &input.to_string()).unwrap();
+    let first = next_impl(handle, staging.to_str().unwrap()).unwrap();
+    assert_eq!(first["upload_operation_header"], UPLOAD_OPERATION_HEADER);
+    let mut persisted_shape = first.clone();
+    persisted_shape
+        .as_object_mut()
+        .unwrap()
+        .remove("upload_operation_header");
+    let prepared: xszc_core::PreparedJob = serde_json::from_value(persisted_shape.clone()).unwrap();
+    assert_eq!(first["generation_id"], prepared.generation_id);
+    assert!(first["request"].get("upload_operation_header").is_none());
+    assert!(first["request"].get("generation_id").is_none());
+    with_client(handle, |client| {
+        let core_job = client.next_prepared(&staging).unwrap().unwrap();
+        assert_eq!(serde_json::to_value(core_job).unwrap(), persisted_shape);
+        Ok(())
+    })
+    .unwrap();
+    close_impl(handle).unwrap();
+    // Opening performs strict validation of every persisted PreparedJob. A header
+    // leaked into prepared_json would fail here because unknown fields are denied.
+    let reopened = open_impl(database.to_str().unwrap(), &config()).unwrap();
+    assert_eq!(
+        next_impl(reopened, staging.to_str().unwrap()).unwrap(),
+        first
+    );
+    assert_eq!(
+        std::fs::read(&prepared.local_parts[0].path).unwrap(),
+        b"photo bytes"
+    );
+    close_impl(reopened).unwrap();
+}

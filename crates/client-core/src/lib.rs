@@ -20,7 +20,8 @@ use xcsc::fs_safety::{
     PrivateDirectory, RelativePath,
 };
 use xszc_crypto::prepare_file;
-use xszs_protocol::{CreateUploadRequest, MediaKind, StorageEncoding};
+pub use xszs_protocol::UPLOAD_OPERATION_HEADER;
+use xszs_protocol::{parse_upload_operation, CreateUploadRequest, MediaKind, StorageEncoding};
 
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -196,8 +197,9 @@ impl PreparedJob {
         )?;
         Uuid::parse_str(&self.job_id)
             .map_err(|_| ClientError::InvalidContract("job_id must be a UUID".to_owned()))?;
-        Uuid::parse_str(&self.generation_id)
-            .map_err(|_| ClientError::InvalidContract("generation_id must be a UUID".to_owned()))?;
+        parse_upload_operation(&self.generation_id).ok_or_else(|| {
+            ClientError::InvalidContract("generation_id must be a non-nil UUID".to_owned())
+        })?;
         for part in &self.local_parts {
             let path = Path::new(&part.path);
             let parent = path.parent().ok_or_else(|| {

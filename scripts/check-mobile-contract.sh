@@ -109,7 +109,9 @@ PYIOS
 python3 scripts/test-cloud-preview-fallback.py
 python3 scripts/test-ios-gallery-metadata.py
 
-# Filter metadata follows each first-page refresh; native UI coverage is in CloudGalleryInstrumentedTest.
+# The native suite covers metadata refresh and failure recovery. Keep the stale-
+# generation guard probe until deferred metadata completion has native coverage;
+# do not freeze unrelated call counts or exception-handler counts.
 python3 - <<'PYMETADATA'
 from pathlib import Path
 source = Path("clients/android/app/src/main/java/org/sarmg/xszc/CloudGalleryScreen.kt").read_text()
@@ -118,10 +120,6 @@ metadata = page.split("if (reset) scope.launch {", 1)[1]
 assert page.index("assets = (assets + page.items)") < page.index("source.albums()")
 for kind in ("albums", "devices", "tags"):
     assert f"val latest = source.{kind}()\n                    if (requestGeneration != generation) return@launch\n                    {kind} = latest" in metadata
-assert metadata.count("catch (error: CancellationException) { throw error }") >= 3
-assert metadata.count("catch (_: Exception)") == 3
-assert source.count("source.albums()") == source.count("source.devices()") == source.count("source.tags()") == 1
-assert "onRefresh = { if (!selecting) load(true) }" in source
 print("Android filter metadata refresh source contract passed (native UI not executed)")
 PYMETADATA
 

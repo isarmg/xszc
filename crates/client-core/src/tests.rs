@@ -620,3 +620,47 @@ fn secure_permissions(path: &Path) {
     #[cfg(unix)]
     fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
 }
+
+#[test]
+fn nil_upload_operation_rejects_recovery_without_discarding_parts_or_queue_state() {
+    let root = tempfile::tempdir().unwrap();
+    let database = root.path().join("client.sqlite3");
+    let source = root.path().join("source.jpg");
+    fs::write(&source, b"pending upload").unwrap();
+    let client = Client::open(&database, current_config(16)).unwrap();
+    let mut input = current_resource();
+    input.file_path = source.to_string_lossy().into_owned();
+    input.source_size = 14;
+    let job_id = client.enqueue(input).unwrap();
+    let prepared = client
+        .next_prepared(root.path().join(MOBILE_STAGING_DIRECTORY))
+        .unwrap()
+        .unwrap();
+    let part = prepared.local_parts[0].path.clone();
+    let mut invalid = serde_json::to_value(&prepared).unwrap();
+    invalid["generation_id"] = serde_json::json!(Uuid::nil().to_string());
+    client
+        .lock_connection()
+        .unwrap()
+        .execute(
+            "UPDATE jobs SET state='uploading',prepared_json=?2 WHERE id=?1",
+            params![job_id, invalid.to_string()],
+        )
+        .unwrap();
+    drop(client);
+    assert!(Client::open(&database, current_config(16)).is_err());
+    assert_eq!(fs::read(part).unwrap(), b"pending upload");
+    let mut connection = Connection::open(&database).unwrap();
+    let (state, persisted): (String, String) = connection
+        .query_row(
+            "SELECT state,prepared_json FROM jobs WHERE id=?1",
+            [&job_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(state, "uploading");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&persisted).unwrap(),
+        invalid
+    );
+}

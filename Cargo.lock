@@ -1739,7 +1739,7 @@ dependencies = [
 [[package]]
 name = "xszs-protocol"
 version = "1.0.0"
-source = "git+https://github.com/isarmg/xszs.git?rev=f5a2126f5008615f0fd6bd76e3e0378ee9600d54#f5a2126f5008615f0fd6bd76e3e0378ee9600d54"
+source = "git+https://github.com/isarmg/xszs.git?rev=ec146c7bdc9b29f332b049369d0c5cfc84f9ce29#ec146c7bdc9b29f332b049369d0c5cfc84f9ce29"
 dependencies = [
  "serde",
  "serde_json",

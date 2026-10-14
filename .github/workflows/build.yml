@@ -35,6 +35,7 @@ jobs:
       - run: python3 scripts/test-ci-ios-simulator.py
       - run: python3 scripts/test-ci-ios-prepare.py
       - run: python3 scripts/test-ci-ios-lanes.py
+      - run: python3 scripts/test-ios-test-results.py
       - run: python3 scripts/test-ci-android-cache.py
       - run: python3 scripts/test-ios-toolchain-checks.py
       - run: ./scripts/check-workflow-supply-chain.sh
@@ -176,7 +177,8 @@ jobs:
       - name: Run iOS account and state isolation tests
         timeout-minutes: 10
         run: |
-          xcodebuild -project clients/ios/Xszc.xcodeproj -scheme Xszc -sdk iphonesimulator -destination "id=$XSZC_TEST_SIMULATOR" -derivedDataPath clients/ios/DerivedData -only-testing:XszcTests -collect-test-diagnostics never -parallel-testing-enabled NO test-without-building
+          xcodebuild -project clients/ios/Xszc.xcodeproj -scheme Xszc -sdk iphonesimulator -destination "id=$XSZC_TEST_SIMULATOR" -derivedDataPath clients/ios/DerivedData -only-testing:XszcTests -resultBundlePath clients/ios/StateTestResults.xcresult -collect-test-diagnostics never -parallel-testing-enabled NO test-without-building
+          python3 scripts/check-ios-test-results.py clients/ios/StateTestResults.xcresult
       # State tests may deny the host app startup prompt; reset only afterward.
       - name: Reset iOS Photos permission for real first-use UI tests
         timeout-minutes: 18
@@ -187,6 +189,7 @@ jobs:
         timeout-minutes: 18
         run: |
           python3 scripts/test-ios-ui.py "$XSZC_TEST_SIMULATOR" clients/ios/TestResults.xcresult
+          python3 scripts/check-ios-test-results.py clients/ios/TestResults.xcresult
       - name: Export iOS UI screenshots and diagnostics
         if: always()
         run: |

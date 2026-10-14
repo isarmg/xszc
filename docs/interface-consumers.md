@@ -20,6 +20,9 @@ Android 与 iOS 当前都消费云端时间线、详情、筛选、相册、收�
 
 Android 与 iOS 在 `POST /v1/uploads` 请求中，将持久化的
 `PreparedJob.generation_id` UUID 作为必需的 `X-Upload-Operation` 请求头发送。
+header 名与非 nil UUID 校验由 `xszs-protocol::UPLOAD_OPERATION_HEADER` / `parse_upload_operation`
+定义。Rust FFI `next` 在响应增加 `upload_operation_header`，两端请求构造直接消费该运行时字段；
+该字段不写入持久化 `PreparedJob`，不改变已有任务和分片。缺失字段时原生端拒绝该响应。
 `CreateUploadRequest` 请求体保持不变。HTTP 重试和进程重启必须复用该 UUID，不能每次请求生成新标识。
 
 预处理分块丢失时，队列保留原上传清单，并等待重新导出源文件。重建时沿用原分块边界，只有完整上传

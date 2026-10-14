@@ -141,7 +141,7 @@ final class BackgroundUploader: NSObject, URLSessionDataDelegate {
     func createUploadRequest(_ job: PreparedJob) throws -> URLRequest {
         var request = authorized(path: "/v1/uploads", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(job.generationId, forHTTPHeaderField: "X-Upload-Operation")
+        request.setValue(job.generationId, forHTTPHeaderField: job.uploadOperationHeader)
         request.httpBody = try encoder.encode(job.request)
         return request
     }

@@ -8,6 +8,7 @@ use xcsc::mobile_ffi::{self as ffi, FfiError, Handle, HandleRegistry, Payload, X
 use xszc_core::{
     Client, ClientConfig, EnqueueResource, MOBILE_APPLICATION_VERSION, MOBILE_DATABASE_FILENAME,
     MOBILE_PRODUCT, MOBILE_REVISION, MOBILE_STAGING_DIRECTORY, MOBILE_STATE_EPOCH,
+    UPLOAD_OPERATION_HEADER,
 };
 
 const MAX_PATH_BYTES: usize = 4096;
@@ -101,7 +102,17 @@ pub unsafe extern "C" fn xszc_transfer_v1(
 fn next_impl(handle: u64, staging: &str) -> Result<Value, FfiError> {
     require_path(staging, MOBILE_STAGING_DIRECTORY)?;
     with_client(handle, |a| {
-        serde_json::to_value(a.next_prepared(staging).map_err(internal)?).map_err(internal)
+        let mut value =
+            serde_json::to_value(a.next_prepared(staging).map_err(internal)?).map_err(internal)?;
+        // Runtime HTTP metadata comes from the server-owned protocol crate.
+        // Do not persist transport names in the prepared generation's manifest.
+        if let Some(job) = value.as_object_mut() {
+            job.insert(
+                "upload_operation_header".into(),
+                json!(UPLOAD_OPERATION_HEADER),
+            );
+        }
+        Ok(value)
     })
 }
 fn stats_impl(handle: u64) -> Result<Value, FfiError> {

@@ -144,7 +144,7 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
         }
         try {
             ensureActive()
-            val create = api.createUpload(job.getJSONObject("request").toString(), job.getString("generation_id"))
+            val create = api.createUpload(job.getJSONObject("request").toString(), job.getString("generation_id"), job.getString("upload_operation_header"))
             ensureActive()
             val disposition = create.getString("disposition")
             if (disposition == "complete") {

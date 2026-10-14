@@ -82,6 +82,7 @@ struct PreparedJob: Codable {
     let stateEpoch: String
     let jobId: String
     let generationId: String
+    let uploadOperationHeader: String
     let request: CreateUpload
     let localParts: [LocalPart]
 }

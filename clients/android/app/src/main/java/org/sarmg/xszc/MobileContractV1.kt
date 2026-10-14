@@ -51,6 +51,8 @@ object MobileContractV1 {
     }
 
     fun requireIdentity(value: JSONObject) {
+        // Runtime metadata supplied by the server-owned protocol via Rust FFI.
+        require(value.getString("upload_operation_header").isNotBlank()) { "Rust Client upload HTTP contract missing" }
         require(value.getString("product") == PRODUCT) { "Rust Client job product mismatch" }
         require(value.getString("application_version") == APPLICATION_VERSION) {
             "Rust Client job application version mismatch"

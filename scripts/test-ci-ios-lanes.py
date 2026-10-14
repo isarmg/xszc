@@ -325,10 +325,11 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn('package-ios-ipa.py', simulator)
         self.assertIn('package-ios-ipa.py', device)
         self.assertIn('CODE_SIGNING_ALLOWED=NO', device)
-        for folder, expected in [('XszcTests', 64), ('XszcUITests', 9)]:
-            methods = sum(len(re.findall(r'\bfunc test\w+\s*\(', p.read_text()))
-                          for p in (ROOT / 'clients/ios' / folder).glob('*.swift'))
-            self.assertEqual(methods, expected)
+        # Verify full-bundle wiring above, and actual nonempty, unskipped results
+        # in CI. Test counts are observations, not a frozen source contract.
+        for bundle in ('StateTestResults.xcresult', 'TestResults.xcresult'):
+            self.assertIn('python3 scripts/check-ios-test-results.py clients/ios/' + bundle,
+                          simulator)
         self.assertIn('python3 scripts/test-ci-ios-lanes.py', job('rust'))
         self.assertIn('components: rustfmt,clippy', job('rust'))
         self.assertIn('cargo fmt --all -- --check', job('rust'))

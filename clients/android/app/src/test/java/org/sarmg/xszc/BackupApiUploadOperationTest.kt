@@ -10,6 +10,20 @@ import org.junit.Test
 
 class BackupApiUploadOperationTest {
     @Test
+    fun createBindsTheHeaderNameSuppliedByRust() {
+        val generation = UUID.randomUUID().toString()
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            assertEquals(generation, chain.request().header("X-Fixture-Operation"))
+            assertEquals(null, chain.request().header("X-Upload-Operation"))
+            throw IOException("request inspected")
+        }.build()
+        val api = BackupApi("https://backup.example.test", "fixture-token", client)
+        assertThrows(IOException::class.java) {
+            api.createUpload("{}", generation, "X-Fixture-Operation")
+        }
+    }
+
+    @Test
     fun createRetriesSendStableGenerationOnActualRequests() {
         val oldGeneration = UUID.randomUUID().toString()
         val newGeneration = UUID.randomUUID().toString()
@@ -30,7 +44,7 @@ class BackupApiUploadOperationTest {
         }.build()
         val api = BackupApi("https://backup.example.test", "fixture-token", client)
         for (generation in listOf(oldGeneration, newGeneration, oldGeneration)) {
-            assertThrows(IOException::class.java) { api.createUpload(manifest, generation) }
+            assertThrows(IOException::class.java) { api.createUpload(manifest, generation, "x-upload-operation") }
         }
         assertEquals(listOf(oldGeneration, newGeneration, oldGeneration), operations)
     }
