@@ -48,10 +48,10 @@ int main(int argc, char **argv) {
     int length = snprintf(path, sizeof(path), "%s/client-v1.sqlite", argv[1]);
     assert(length > 0 && (size_t)length < sizeof(path));
     const char config[] = "{\"product\":\"xszc\",\"application_version\":\"1.0.0\",\"revision\":1,\"state_epoch\":\"xszc-mobile-v1\",\"part_size\":16777216}";
-    char prior_config[sizeof(config)]; memcpy(prior_config, config, sizeof(config));
-    char *revision = strstr(prior_config, "\"revision\":1"); assert(revision);
-    revision[strlen("\"revision\":")] = '1';
-    assert(xszc_open_v1((const uint8_t *)path, (size_t)length, (const uint8_t *)prior_config, sizeof(prior_config)-1, &out) == XCSC_FFI_INVALID_ARGUMENT);
+    char noncurrent_config[sizeof(config)]; memcpy(noncurrent_config, config, sizeof(config));
+    char *revision = strstr(noncurrent_config, "\"revision\":1"); assert(revision);
+    revision[strlen("\"revision\":")] = '9';
+    assert(xszc_open_v1((const uint8_t *)path, (size_t)length, (const uint8_t *)noncurrent_config, sizeof(noncurrent_config)-1, &out) == XCSC_FFI_INVALID_ARGUMENT);
     release(&out);
     errno = 0; FILE *absent = fopen(path, "rb"); assert(absent == NULL && errno == ENOENT);
     int open_status = xszc_open_v1((const uint8_t *)path, (size_t)length, (const uint8_t *)config, sizeof(config) - 1, &out);
