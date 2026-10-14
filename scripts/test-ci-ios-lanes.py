@@ -191,6 +191,28 @@ class WorkflowTests(unittest.TestCase):
                 self.assertIn('workflow supply-chain check failed', result.stderr)
                 self.assertRegex(result.stderr, 'reviewed xcode-27 image|must use ubuntu-24.04')
 
+    def test_host_abi_gate_runs_once_per_os_and_cannot_be_softened(self):
+        gate = 'bash scripts/test-mobile-ffi-c.sh'
+        simulator, device, linux = job('ios_simulator'), job('ios_device'), job('rust')
+        self.assertNotIn(gate, simulator)
+        self.assertEqual(device.count(gate), 1)
+        self.assertEqual(linux.count(gate), 1)
+        self.assertEqual(WORKFLOW.count(gate), 2)
+        for lane in (device, linux):
+            steps = re.split(r'^      - ', lane, flags=re.M)
+            host_step = next(step for step in steps if gate in step)
+            self.assertNotIn('continue-on-error', lane)
+            self.assertNotRegex(host_step, r'(?m)^\s*if:')
+            self.assertRegex(host_step, r'run: ' + re.escape(gate) + r'\s*\Z')
+        # The retained macOS gate has no simulator/device-specific inputs.
+        host_script = (ROOT / 'scripts/test-mobile-ffi-c.sh').read_text()
+        for unsupported in ('--target', '--features', 'XSZC_TEST_SIMULATOR', 'simctl'):
+            self.assertNotIn(unsupported, host_script)
+        self.assertIn('CARGO_INCREMENTAL=0 cargo build --locked -p xszc-mobile', host_script)
+        self.assertIn('cargo build --locked -p xszc-core --example sandbox_database', host_script)
+        self.assertIn('sandbox-exec -f', host_script)
+        self.assertNotIn('continue-on-error', job('ios'))
+
     def test_lanes_keep_complete_tests_and_separate_cache_writes(self):
         simulator, device = job('ios_simulator'), job('ios_device')
         for lane, mode in [(simulator, 'simulator'), (device, 'device')]:
@@ -212,7 +234,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertNotIn('components:', lane)
             self.assertIn('verify-ios-rust-toolchain.sh ' + mode + '\n', lane)
             for gate in ['verify-ios-rust-toolchain.sh', 'check-xcsc-source.py',
-                         'verify-ios-toolchain.sh', 'ci-ios-prepare.sh wait', 'test-mobile-ffi-c.sh']:
+                         'verify-ios-toolchain.sh', 'ci-ios-prepare.sh wait']:
                 self.assertIn(gate, lane)
         self.assertIn('-only-testing:XszcTests ', simulator)
         self.assertNotIn('-skip-testing:', simulator)

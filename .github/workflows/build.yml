@@ -158,8 +158,8 @@ jobs:
         run: bash scripts/verify-ios-toolchain.sh
       - name: Require reviewed XcodeGen and successful Swift sandbox probe
         run: bash scripts/ci-ios-prepare.sh wait
-      - name: Verify fresh login DB inside a restricted Apple sandbox
-        run: bash scripts/test-mobile-ffi-c.sh
+      # The identical macOS host ABI/sandbox check runs in ios_device;
+      # the strict iOS aggregate requires that lane as well as this one.
       - run: ./scripts/build-ios-rust.sh simulator
       - run: cd clients/ios && xcodegen generate
       - name: Prepare and build iOS tests once
