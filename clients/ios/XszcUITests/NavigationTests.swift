@@ -215,8 +215,24 @@ final class NavigationTests: XCTestCase {
         pairing.tap()
         assertGlassLogin(app)
         XCTAssertFalse(app.buttons["account.submit"].isEnabled)
-        app.secureTextFields["pairing.authorization-code"].tap()
-        app.secureTextFields["pairing.authorization-code"].typeText("test-instance-code")
+        let password = app.secureTextFields["pairing.authorization-code"]
+        let passwordReady = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            password.exists && password.isHittable
+        }, object: password)
+        let readyResult = XCTWaiter.wait(for: [passwordReady], timeout: 5)
+        if readyResult != .completed { screenshot("account-password-not-hittable") }
+        XCTAssertEqual(readyResult, .completed, app.debugDescription)
+        password.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        let keyboardReady = app.keyboards.firstMatch.waitForExistence(timeout: 5)
+        // Preserve the actual pre-input screen even when typeText fails focus checks.
+        screenshot(keyboardReady ? "account-before-password-input" : "account-keyboard-missing")
+        let inputHierarchy = XCTAttachment(string: app.debugDescription)
+        inputHierarchy.name = "account-before-password-input-hierarchy"
+        inputHierarchy.lifetime = .keepAlways
+        add(inputHierarchy)
+        XCTAssertTrue(keyboardReady, app.debugDescription)
+        // The keyboard is a synchronization signal; typeText still verifies focus.
+        password.typeText("test-instance-code")
         XCTAssertFalse(app.buttons["account.submit"].isEnabled)
         screenshot("account-login-keyboard")
         app.buttons["account.cancel"].tap()

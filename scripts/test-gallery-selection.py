@@ -379,6 +379,31 @@ class PhotoObserverLifecycleTests(unittest.TestCase):
         self.assertNotIn('trackLibrary()', source)
 
 
+class LoginInputSynchronizationTests(unittest.TestCase):
+    def test_first_password_input_waits_for_visible_field_and_keyboard_without_retry(self):
+        source = (args.root / 'clients/ios/XszcUITests/NavigationTests.swift').read_text()
+        body = block(source, 'func testLoginRemainsReachableFromGalleryAndSettings')
+        sync = body[body.index('let password ='):body.index('screenshot("account-login-keyboard")')]
+        self.assertIn('password.exists && password.isHittable', sync)
+        self.assertIn('XCTWaiter.wait(for: [passwordReady], timeout: 5)', sync)
+        self.assertEqual(sync.count('.tap()'), 1)
+        self.assertIn('password.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()', sync)
+        self.assertNotRegex(sync, r'\b(for|while)\b(?!:| \[)')
+        self.assertNotIn('value(forKey:', sync)
+        self.assertNotIn('hasKeyboardFocus', sync)
+        keyboard = 'app.keyboards.firstMatch.waitForExistence(timeout: 5)'
+        typed = 'password.typeText("test-instance-code")'
+        self.assertLess(sync.index('.tap()'), sync.index(keyboard))
+        self.assertLess(sync.index(keyboard), sync.index('XCTAssertTrue(keyboardReady'))
+        self.assertLess(sync.index('XCTAssertTrue(keyboardReady'), sync.index(typed))
+        self.assertLess(sync.index('inputHierarchy.lifetime = .keepAlways'), sync.index(typed))
+        self.assertIn('account-keyboard-missing', sync)
+        self.assertIn('account-password-not-hittable', sync)
+        self.assertIn('XCTAssertFalse(app.buttons["account.submit"].isEnabled)', sync)
+        self.assertIn('app.textFields["account.server"].typeText("http://invalid.example")', body)
+        self.assertIn('app.secureTextFields["pairing.authorization-code"].typeText("test-instance-code")', body)
+
+
 class UIScrollProbeTests(unittest.TestCase):
     def test_missing_tiles_do_not_resolve_hittability_before_scrolling(self):
         source = (args.root / 'clients/ios/XszcUITests/NavigationTests.swift').read_text()
