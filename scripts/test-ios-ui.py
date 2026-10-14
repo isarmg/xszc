@@ -9,6 +9,11 @@ import sys
 import time
 
 
+# Reserve half of the existing 240s UI observer assertion for PhotoKit delivery
+# and gallery refresh. Import is attempted once; timeout still fails the suite.
+PHOTO_IMPORT_TIMEOUT = 120
+
+
 def main():
     simulator, result_bundle = sys.argv[1:]
     fixture_dir = Path(os.environ["RUNNER_TEMP"]) / "xszc-layout-photos"
@@ -48,7 +53,7 @@ def run_tests(command, simulator, refreshed_photo):
             print("iOS live photo import started", flush=True)
             try:
                 subprocess.run(["xcrun", "simctl", "addmedia", simulator,
-                                str(refreshed_photo)], check=True, timeout=30)
+                                str(refreshed_photo)], check=True, timeout=PHOTO_IMPORT_TIMEOUT)
                 print(f"iOS live photo import finished after {time.monotonic() - started:.3f}s", flush=True)
             except BaseException:
                 print(f"iOS live photo import failed after {time.monotonic() - started:.3f}s", flush=True)

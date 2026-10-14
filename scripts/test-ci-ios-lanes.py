@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise slice builds, the exact aggregate shell, and full test wiring."""
 import itertools
+import importlib.util
 import sys
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = (ROOT / '.github/workflows/build.yml').read_text()
@@ -153,6 +155,40 @@ if args[:2] == ['simctl', 'addmedia'] and any('gallery-page-' in arg for arg in 
 
 
 class LivePhotoImportTests(unittest.TestCase):
+    def test_single_import_uses_half_observer_deadline_and_timeout_still_fails(self):
+        spec = importlib.util.spec_from_file_location('ui_deadline', ROOT / 'scripts/test-ios-ui.py')
+        ui = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(ui)
+        navigation = (ROOT / 'clients/ios/XszcUITests/NavigationTests.swift').read_text()
+        observer = navigation.split('func testGalleryAutoRefreshesAfterSystemPhotoLibraryChanges()', 1)[1].split('func testSettingsSwitches', 1)[0]
+        self.assertIn('waitForExistence(timeout: 240)', observer)
+        self.assertEqual(ui.PHOTO_IMPORT_TIMEOUT, 120)
+        for timeout in (False, True):
+            with self.subTest(timeout=timeout):
+                process = mock.MagicMock()
+                process.__enter__.return_value = process
+                process.stdout = ['XSZC_UI_READY_FOR_PHOTO_CHANGE\n'] * 2 + ['still draining XCTest\n']
+                process.wait.return_value = 0
+                failure = subprocess.TimeoutExpired('fixture import', 120) if timeout else None
+                with mock.patch.object(ui.subprocess, 'Popen', return_value=process), \
+                     mock.patch.object(ui.subprocess, 'run', side_effect=failure) as imported, \
+                     mock.patch('builtins.print') as printed:
+                    if timeout:
+                        with self.assertRaises(subprocess.TimeoutExpired):
+                            ui.run_tests(['test-runner'], 'test-device', Path('fixture.png'))
+                    else:
+                        self.assertEqual(ui.run_tests(['test-runner'], 'test-device', Path('fixture.png')), 0)
+                    imported.assert_called_once_with(
+                        ['xcrun', 'simctl', 'addmedia', 'test-device', 'fixture.png'],
+                        check=True, timeout=120)
+                    printed.assert_any_call('still draining XCTest\n', end='', flush=True)
+                    messages = [call.args[0] for call in printed.call_args_list]
+                    self.assertTrue(any(('failed after' if timeout else 'finished after') in line for line in messages))
+                    if timeout:
+                        process.terminate.assert_called()
+                    else:
+                        process.terminate.assert_not_called()
+
     def test_real_runner_logs_import_success_and_failure_without_changing_tests(self):
         for status in (0, 7):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as temporary:
