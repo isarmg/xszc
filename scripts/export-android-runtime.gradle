@@ -28,8 +28,14 @@ gradle.projectsEvaluated {
                     int count
                     while ((count = input.read(buffer)) != -1) { digest.update(buffer, 0, count) }
                 }
+                // Gradle Module Metadata can cache a published artifact under
+                // another name (runtime.aar versus runtime-android-1.11.4.aar).
+                // These Maven artifact fields describe the resolved source;
+                // file.name only describes its local cache entry.
+                def classifier = artifact.classifier ? "-${artifact.classifier}" : ''
+                def filename = "${artifact.name}-${coordinate.version}${classifier}.${artifact.extension}"
                 artifacts[identity] << [path: artifact.file.canonicalPath,
-                    filename: artifact.file.name, sha256: digest.digest().encodeHex().toString()]
+                    filename: filename.toString(), sha256: digest.digest().encodeHex().toString()]
             }
             def result = configuration.incoming.resolutionResult
             def components = result.allComponents.findAll {

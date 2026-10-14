@@ -78,6 +78,19 @@ jobs:
         with:
           gradle-version: "9.5.0"
           cache-provider: basic
+      - name: Verify real Gradle metadata aliases and strict runtime source rejection
+        run: python3 scripts/test-android-runtime-export.py
+      - name: Verify actual Android release runtime sources before compiling
+        run: |
+          gradle -p clients/android -I "$PWD/scripts/export-android-runtime.gradle" \
+            "-PxssiRuntimeExport=$RUNNER_TEMP/xszc-android-runtime.json" :app:exportXssiRuntimeInventory
+          python3 scripts/check-android-runtime-inventory.py --export "$RUNNER_TEMP/xszc-android-runtime.json"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: xszc-android-release-runtime-resolution
+          path: ${{ runner.temp }}/xszc-android-runtime.json
+          if-no-files-found: warn
       - run: cargo install cargo-ndk --version 4.1.2 --locked
       - name: Build Rust Android library
         run: |
