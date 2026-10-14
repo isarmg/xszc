@@ -33,6 +33,7 @@ jobs:
         run: python3 scripts/test-gallery-selection.py
       - run: python3 scripts/test-package-ios-ipa.py
       - run: python3 scripts/test-ci-ios-simulator.py
+      - run: python3 scripts/test-ci-ios-prepare.py
       - run: python3 scripts/test-ios-toolchain-checks.py
       - run: ./scripts/check-workflow-supply-chain.sh
       - run: cargo fmt --all -- --check
@@ -138,6 +139,8 @@ jobs:
           persist-credentials: false
       - name: Start iOS simulator while preparing toolchains
         run: python3 scripts/ci-ios-simulator.py start
+      - name: Prepare XcodeGen and Swift sandbox during Rust restoration
+        run: bash scripts/ci-ios-prepare.sh start
       - name: Cache exact iOS Rust toolchain
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
@@ -157,12 +160,8 @@ jobs:
           key: ios27
       - name: Verify stable Xcode 27 and iOS 27 SDKs
         run: bash scripts/verify-ios-toolchain.sh
-      - name: Install and verify the reviewed XcodeGen version
-        run: |
-          brew install xcodegen
-          test "$(xcodegen --version)" = "Version: 2.46.0"
-      - name: Verify Swift system directory aliases inside an Apple sandbox
-        run: bash scripts/test-ios-system-directory.sh
+      - name: Require reviewed XcodeGen and successful Swift sandbox probe
+        run: bash scripts/ci-ios-prepare.sh wait
       - name: Verify fresh login DB inside a restricted Apple sandbox
         run: bash scripts/test-mobile-ffi-c.sh
       - run: ./scripts/build-ios-rust.sh
@@ -191,6 +190,9 @@ jobs:
         if: always()
         run: |
           mkdir -p dist/ios-ui
+          if test -f "$RUNNER_TEMP/xszc-ios-prepare.log"; then
+            cp "$RUNNER_TEMP/xszc-ios-prepare.log" dist/ios-ui/preparation.log
+          fi
           if test -f "$RUNNER_TEMP/xszc-simulator-boot.log"; then
             cp "$RUNNER_TEMP/xszc-simulator-boot.log" dist/ios-ui/simulator-boot.log
           fi

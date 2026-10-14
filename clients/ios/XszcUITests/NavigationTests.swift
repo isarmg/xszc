@@ -12,7 +12,7 @@ final class NavigationTests: XCTestCase {
         requestPhotoAccess(app)
         let tile = app.descendants(matching: .any).matching(identifier: "media.tile.layout-video.mp4").firstMatch
         for _ in 0..<30 {
-            if tile.isHittable { break }
+            if tile.exists && tile.isHittable { break }
             app.scrollViews["gallery.scroll"].swipeUp(velocity: .fast)
         }
         XCTAssertTrue(tile.isHittable, "Seed the video fixture with scripts/seed-ios-ui.sh")
@@ -116,7 +116,7 @@ final class NavigationTests: XCTestCase {
         let older = app.descendants(matching: .any).matching(identifier: "media.tile.gallery-page-001.png").firstMatch
         let scroll = app.scrollViews["gallery.scroll"]
         for _ in 0..<30 {
-            if older.isHittable { break }
+            if older.exists && older.isHittable { break }
             scroll.swipeUp(velocity: .fast)
         }
         XCTAssertTrue(older.isHittable, app.debugDescription)

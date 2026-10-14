@@ -329,5 +329,37 @@ class SelectionRegressionTests(unittest.TestCase):
         self.assertIn('entryGeneration += 1', block(source, 'func filtersChanged'))
 
 
+class UIScrollProbeTests(unittest.TestCase):
+    def test_missing_tiles_do_not_resolve_hittability_before_scrolling(self):
+        source = (args.root / 'clients/ios/XszcUITests/NavigationTests.swift').read_text()
+
+        class Tile:
+            def __init__(self, exists, hittable):
+                self.exists = exists
+                self.hittable = hittable
+
+            @property
+            def isHittable(self):
+                if not self.exists:
+                    raise AssertionError('Missing tiles must not trigger implicit AX resolution retries')
+                return self.hittable
+
+        for function, name in (
+            ('func testVideoOpensFullScreenPausedAndSupportsSeekingSpeedAndBackupSelection', 'tile'),
+            ('func testCompleteDirectoryScrollsPastPageBoundariesAndKeepsPositionAcrossRefresh', 'older'),
+        ):
+            body = block(source, function)
+            loop = block(body, 'for _ in 0..<30')
+            predicate = re.search(r'if (.*?) \{ break \}', loop).group(1)
+            self.assertEqual(predicate, f'{name}.exists && {name}.isHittable')
+            self.assertIn('swipeUp(velocity: .fast)', loop)
+            self.assertIn(f'XCTAssertTrue({name}.isHittable', body)
+            for exists, hittable, expected in ((False, False, False), (True, False, False), (True, True, True)):
+                with self.subTest(function=function, exists=exists, hittable=hittable):
+                    result = eval(predicate.replace('&&', ' and '), {'__builtins__': {}},
+                                  {name: Tile(exists, hittable)})
+                    self.assertEqual(result, expected)
+
+
 if __name__ == '__main__':
     unittest.main(argv=[__file__, *remaining])
