@@ -77,7 +77,7 @@ class SliceTests(unittest.TestCase):
 
 
 class SeedTimingTests(unittest.TestCase):
-    def run_seed(self, fail=''):
+    def run_seed(self, fail='', mode=None):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / 'bin').mkdir()
@@ -100,10 +100,10 @@ if args[:2] == ['simctl', 'addmedia'] and any('gallery-page-' in arg for arg in 
             log = root / 'calls'
             env = dict(os.environ, PATH=str(root / 'bin') + os.pathsep + os.environ['PATH'],
                        RUNNER_TEMP=str(root), PROBE_LOG=str(log), FAIL_IMPORT=fail)
-            result = subprocess.run(['bash', str(ROOT / 'scripts/seed-ios-ui.sh'), 'test-device'],
+            result = subprocess.run(['bash', str(ROOT / 'scripts/seed-ios-ui.sh'), 'test-device'] + ([mode] if mode else []),
                                     cwd=root, env=env, capture_output=True, text=True, timeout=15)
             import json
-            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
             return result, calls
 
     def test_timing_preserves_all_inputs_and_import_order(self):
@@ -120,12 +120,36 @@ if args[:2] == ['simctl', 'addmedia'] and any('gallery-page-' in arg for arg in 
                       'reset-photos-privacy', *['import-photo-%d' % i for i in range(8, 0, -1)]]:
             self.assertRegex(result.stdout, 'iOS fixture phase ' + phase + r' finished after \d+s: exit 0')
 
+    def test_media_mode_keeps_exact_imports_without_reset(self):
+        result, calls = self.run_seed(mode='media')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        imports = [call[3:] for call in calls if call[:2] == ['simctl', 'addmedia']]
+        self.assertEqual([[Path(p).name for p in group] for group in imports], [
+            ['gallery-page-%03d.png' % i for i in range(1, 302)],
+            ['layout-video.mp4'], *[['layout-photo-%d.png' % i] for i in range(8, 0, -1)]])
+        self.assertFalse(any(call[:2] == ['simctl', 'privacy'] for call in calls))
+
+    def test_reset_mode_never_imports_or_boots(self):
+        result, calls = self.run_seed(mode='reset')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls, [
+            ['simctl', 'get_app_container', 'test-device', 'org.sarmg.xszc', 'app'],
+            ['simctl', 'privacy', 'test-device', 'reset', 'photos', 'org.sarmg.xszc']])
+        self.assertNotIn('generate-photos', result.stdout)
+
+    def test_unknown_mode_fails_before_simulator_access(self):
+        result, calls = self.run_seed(mode='invalid')
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(calls, [])
+
     def test_import_failure_reports_status_and_stops_remaining_phases(self):
-        result, calls = self.run_seed(fail='yes')
-        self.assertEqual(result.returncode, 7)
-        self.assertIn('exit 7', result.stdout)
-        self.assertEqual(sum(call[:2] == ['simctl', 'addmedia'] for call in calls), 1)
-        self.assertNotIn('import-video started', result.stdout)
+        for mode in ('all', 'media'):
+            with self.subTest(mode=mode):
+                result, calls = self.run_seed(fail='yes', mode=mode)
+                self.assertEqual(result.returncode, 7)
+                self.assertIn('exit 7', result.stdout)
+                self.assertEqual(sum(call[:2] == ['simctl', 'addmedia'] for call in calls), 1)
+                self.assertNotIn('import-video started', result.stdout)
 
 
 class LivePhotoImportTests(unittest.TestCase):
@@ -158,6 +182,24 @@ class LivePhotoImportTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_media_overlaps_build_but_reset_follows_state_tests(self):
+        simulator = job('ios_simulator')
+        sequence = ['ci-ios-simulator.py start', 'ci-ios-prepare.sh start media',
+                    'uses: dtolnay/rust-toolchain@', 'build-for-testing',
+                    'ci-ios-prepare.sh wait media', '-only-testing:XszcTests ',
+                    'seed-ios-ui.sh "$XSZC_TEST_SIMULATOR" reset', 'python3 scripts/test-ios-ui.py ']
+        offsets = [simulator.index(value) for value in sequence]
+        self.assertEqual(offsets, sorted(offsets))
+        steps = re.split(r'^      - ', simulator, flags=re.M)
+        build = next(step for step in steps if 'build-for-testing' in step)
+        self.assertIn('timeout-minutes: 10', build)
+        self.assertNotIn('ci-ios-prepare.sh wait media', build)
+        media_wait = next(step for step in steps if 'ci-ios-prepare.sh wait media' in step)
+        self.assertIn('timeout-minutes: 18', media_wait)
+        diagnostics = next(step for step in steps if 'Export iOS UI screenshots' in step)
+        self.assertIn('if: always()', diagnostics)
+        self.assertIn('xszc-ios-media.log', diagnostics)
+
     def test_aggregate_requires_both_exact_success_results(self):
         aggregate = job('ios')
         self.assertIn('name: iOS unsigned IPA\n', aggregate)

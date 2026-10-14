@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 
 SOURCE = Path(__file__).with_name('ci-ios-prepare.sh')
@@ -43,8 +44,8 @@ exit "${SANDBOX_CODE:-0}"
         target.write_text(text)
         target.chmod(0o755)
 
-    def run_step(self, step):
-        return subprocess.run(['bash', str(self.script), step], env=self.env,
+    def run_step(self, step, *args):
+        return subprocess.run(['bash', str(self.script), step, *args], env=self.env,
                               capture_output=True, text=True, timeout=5)
 
     def test_start_returns_before_worker_and_wait_joins_across_shells(self):
@@ -82,6 +83,76 @@ exit "${SANDBOX_CODE:-0}"
         (self.root / 'xszc-ios-prepare.status').write_text('not-a-status')
         (self.root / 'xszc-ios-prepare.log').write_text('probe log')
         self.assertNotEqual(self.run_step('wait').returncode, 0)
+
+    def media_stubs(self):
+        self.env['XSZC_TEST_SIMULATOR'] = 'test-device'
+        self.write('scripts/ci-ios-simulator.py', """import os, sys
+from pathlib import Path
+assert sys.argv[1:] == ['wait']
+print('joined existing boot', flush=True)
+Path(os.environ['RUNNER_TEMP'], 'boot-joined').touch()
+sys.exit(int(os.environ.get('BOOT_CODE', '0')))
+""")
+        self.write('scripts/seed-ios-ui.sh', """#!/bin/bash
+set -eu
+test -f "$RUNNER_TEMP/boot-joined"
+test "$1" = test-device && test "$2" = media
+echo media-executed
+touch "$RUNNER_TEMP/media-ran"
+exit "${MEDIA_CODE:-0}"
+""")
+
+    def test_media_wait_joins_boot_before_import_and_preserves_failure(self):
+        self.media_stubs()
+        for code in ('0', '7'):
+            with self.subTest(code=code):
+                self.env['MEDIA_CODE'] = code
+                self.assertEqual(self.run_step('start', 'media').returncode, 0)
+                result = self.run_step('wait', 'media')
+                self.assertEqual(result.returncode, int(code), result.stderr)
+                self.assertLess(result.stdout.index('joined existing boot'), result.stdout.index('media-executed'))
+        self.assertFalse((self.root / 'sandbox-ran').exists())
+
+    def test_boot_failure_prevents_media_and_retains_exit_code(self):
+        self.media_stubs()
+        self.env['BOOT_CODE'] = '8'
+        self.run_step('start', 'media')
+        self.assertEqual(self.run_step('wait', 'media').returncode, 8)
+        self.assertFalse((self.root / 'media-ran').exists())
+
+    def test_media_missing_result_is_bounded_failure(self):
+        self.script.write_text(self.script.read_text().replace('deadline=$((SECONDS + budget))', 'deadline=$SECONDS'))
+        (self.root / 'xszc-ios-media.log').write_text('worker missing')
+        result = self.run_step('wait', 'media')
+        self.assertEqual(result.returncode, 124)
+        self.assertIn('worker missing', result.stderr)
+
+    def test_media_timeout_reports_failure(self):
+        self.media_stubs()
+        self.write('scripts/seed-ios-ui.sh', '#!/bin/bash\nsleep 0.5\ntouch "$RUNNER_TEMP/import-finished"\n')
+        self.assertIn('worker.wait(timeout=1080)', self.script.read_text())
+        self.script.write_text(self.script.read_text().replace('worker.wait(timeout=1080)', 'worker.wait(timeout=0.1)'))
+        self.run_step('start', 'media')
+        result = self.run_step('wait', 'media')
+        self.assertEqual(result.returncode, 124)
+        self.assertIn('exceeded 18 minutes', result.stdout)
+        time.sleep(0.6)
+        self.assertFalse((self.root / 'import-finished').exists())
+
+    def test_media_budget_includes_boot_join(self):
+        self.media_stubs()
+        self.write('scripts/ci-ios-simulator.py', 'import time\ntime.sleep(30)\n')
+        self.script.write_text(self.script.read_text().replace('worker.wait(timeout=1080)', 'worker.wait(timeout=0.1)'))
+        self.run_step('start', 'media')
+        result = self.run_step('wait', 'media')
+        self.assertEqual(result.returncode, 124)
+        self.assertIn('exceeded 18 minutes', result.stdout)
+        self.assertFalse((self.root / 'media-ran').exists())
+
+    def test_media_malformed_result_fails_closed(self):
+        (self.root / 'xszc-ios-media.status').write_text('not-a-status')
+        (self.root / 'xszc-ios-media.log').write_text('media log')
+        self.assertNotEqual(self.run_step('wait', 'media').returncode, 0)
 
 
 if __name__ == '__main__':

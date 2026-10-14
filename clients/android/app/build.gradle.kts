@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -120,4 +122,25 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+}
+
+// Opt in only for the CI unit/assemble invocation. Gradle's normal input
+// fingerprints decide compiler reuse; tests and packaging are never cached here.
+if (providers.gradleProperty("xszcCiCompilationCache").orNull == "true") {
+    val cachedCompilationTasks = setOf(
+        "compileDebugKotlin",
+        "compileDebugUnitTestKotlin",
+        "compileDebugAndroidTestKotlin",
+        "compileDebugJavaWithJavac",
+        "compileDebugUnitTestJavaWithJavac",
+        "compileDebugAndroidTestJavaWithJavac",
+    )
+    tasks.configureEach {
+        if (name !in cachedCompilationTasks) {
+            outputs.doNotCacheIf("CI caches only debug Kotlin/Java compilation") { true }
+        }
+    }
+    tasks.withType<Test>().configureEach {
+        outputs.upToDateWhen { false }
+    }
 }

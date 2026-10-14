@@ -70,6 +70,8 @@ def main():
     if sys.argv[1] == 'wait':
         try:
             wait(os.environ['XSZC_TEST_SIMULATOR'], status)
+        except subprocess.CalledProcessError as error:
+            return error.returncode
         finally:
             if log.exists():
                 print(log.read_text(), flush=True)

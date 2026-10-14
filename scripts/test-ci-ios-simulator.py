@@ -67,6 +67,12 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(error.exception.returncode, 7)
         run.assert_not_called()
 
+    def test_wait_command_preserves_boot_failure_status(self):
+        with patch.dict(simulator.os.environ, {'RUNNER_TEMP': self.temporary.name, 'XSZC_TEST_SIMULATOR': 'same-device'}), \
+             patch.object(simulator.sys, 'argv', ['helper', 'wait']), \
+             patch.object(simulator, 'wait', side_effect=subprocess.CalledProcessError(7, ['boot'])):
+            self.assertEqual(simulator.main(), 7)
+
     def test_mismatched_device_fails(self):
         self.status_for(udid='other-device')
         with self.assertRaises(ValueError):

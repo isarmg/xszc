@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-simulator_udid="$1"
+simulator_udid="${1:?Expected simulator UDID}"
+mode="${2:-all}"
+case "$mode" in
+  all|media|reset) ;;
+  *) echo 'Expected all, media, or reset' >&2; exit 2 ;;
+esac
+[[ $# -le 2 ]] || exit 2
 # Observe the real PhotoKit import phases without changing their order or inputs.
 timed_phase() {
   local label="$1" started="$SECONDS" code
@@ -10,6 +16,7 @@ timed_phase() {
   printf 'iOS fixture phase %s finished after %ss: exit %s\n' "$label" "$((SECONDS - started))" "$code"
   return "$code"
 }
+if [[ "$mode" != reset ]]; then
 # Use deterministic generated photos; no personal media enters test artifacts.
 fixture_dir="${RUNNER_TEMP:?}/xszc-layout-photos"
 mkdir -p "$fixture_dir"
@@ -40,9 +47,13 @@ timed_phase import-video xcrun simctl addmedia "$simulator_udid" "$fixture_dir/l
 for ((index=8; index>=1; index--)); do
   timed_phase "import-photo-$index" xcrun simctl addmedia "$simulator_udid" "$fixture_dir/layout-photo-$index.png"
 done
+fi
+
+if [[ "$mode" != media ]]; then
 # Unit tests launch the host app first, and XCTest can deny its startup prompt.
 # Reset that prior decision so UI tests exercise the real first-use prompt.
 # Do not pre-grant permission: the UI test must tap Allow Full Access itself.
 if xcrun simctl get_app_container "$simulator_udid" org.sarmg.xszc app >/dev/null 2>&1; then
   timed_phase reset-photos-privacy xcrun simctl privacy "$simulator_udid" reset photos org.sarmg.xszc
+fi
 fi

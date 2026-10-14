@@ -1,29 +1,53 @@
 #!/usr/bin/env bash
-# Overlap independent XcodeGen/Swift preparation with Rust toolchain extraction.
+# Overlap toolchain preparation and simulator fixtures with native builds.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-status="$RUNNER_TEMP/xszc-ios-prepare.status"
-log="$RUNNER_TEMP/xszc-ios-prepare.log"
+kind="${2:-tools}"
+case "$kind" in
+  tools) name=prepare; budget=900 ;;
+  media) name=media; budget=1080 ;;
+  *) echo 'Expected tools or media' >&2; exit 2 ;;
+esac
+status="$RUNNER_TEMP/xszc-ios-$name.status"
+log="$RUNNER_TEMP/xszc-ios-$name.log"
 case "${1:-}" in
   start)
     rm -f "$status" "$status.tmp"
-    nohup bash "$root/scripts/ci-ios-prepare.sh" worker </dev/null >"$log" 2>&1 &
+    nohup bash "$root/scripts/ci-ios-prepare.sh" worker "$kind" </dev/null >"$log" 2>&1 &
     ;;
   worker)
     # Report the original failure even when a preparation command exits early.
     trap 'code=$?; echo "iOS preparation finished after ${SECONDS}s: exit $code"; printf "%s\n" "$code" > "$status.tmp"; mv "$status.tmp" "$status"' EXIT
     cd "$root"
-    brew install xcodegen
-    test "$(xcodegen --version)" = 'Version: 2.46.0'
-    echo "Reviewed XcodeGen ready after ${SECONDS}s"
-    bash scripts/test-ios-system-directory.sh
+    if [[ "$kind" == media ]]; then
+      # One 18-minute budget covers joining boot and importing fixtures.
+      # Stop the entire process group on timeout, including any pending boot join.
+      python3 - <<'PYTHON'
+import os, signal, subprocess, sys
+command = 'python3 scripts/ci-ios-simulator.py wait && bash scripts/seed-ios-ui.sh "$XSZC_TEST_SIMULATOR" media'
+worker = subprocess.Popen(['bash', '-c', command], start_new_session=True)
+try:
+    code = worker.wait(timeout=1080)
+except subprocess.TimeoutExpired:
+    os.killpg(worker.pid, signal.SIGKILL)
+    worker.wait()
+    print('iOS media preparation exceeded 18 minutes', flush=True)
+    code = 124
+sys.exit(code)
+PYTHON
+    else
+      brew install xcodegen
+      test "$(xcodegen --version)" = 'Version: 2.46.0'
+      echo "Reviewed XcodeGen ready after ${SECONDS}s"
+      bash scripts/test-ios-system-directory.sh
+    fi
     ;;
   wait)
-    deadline=$((SECONDS + 900))
+    deadline=$((SECONDS + budget))
     while [[ ! -f "$status" ]]; do
       if ((SECONDS >= deadline)); then
         cat "$log" >&2
-        echo 'iOS preparation did not report its result within 15 minutes' >&2
+        echo "iOS $kind preparation did not report its result within ${budget}s" >&2
         exit 124
       fi
       sleep 1
