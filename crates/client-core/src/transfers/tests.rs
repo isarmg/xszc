@@ -1274,3 +1274,169 @@ fn excluded_completed_thumbnail_refresh_cannot_restore_automatic_ownership() {
         false
     );
 }
+
+#[test]
+fn newer_version_completion_preserves_original_generation_for_delayed_retry() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo.jpg");
+    fs::write(&source, b"oldbytes").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    client.transfer(request(json!({"op":"bind","server":"https://backup.example","account_id":Uuid::new_v4(),"device_id":Uuid::new_v4()}))).unwrap();
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    let old = client.enqueue(resource(&source, None)).unwrap();
+    let old_prepared = client.next_prepared(&staging).unwrap().unwrap();
+    client
+        .mark_upload(&old, &old_prepared.generation_id)
+        .unwrap();
+    client
+        .mark_failed(&old, "completion response lost", true)
+        .unwrap();
+    fs::write(&source, b"newbytes").unwrap();
+    let mut input = resource(&source, None);
+    input.modified_ms = 2;
+    let new = client.enqueue(input).unwrap();
+    let new_prepared = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(new_prepared.job_id, new);
+    client.transfer(request(json!({"op":"receipt","job_id":new,"asset_id":Uuid::new_v4(),"resource_id":Uuid::new_v4(),"content_blake3":new_prepared.request.content_blake3}))).unwrap();
+    client.mark_complete(&new).unwrap();
+    // Reopen through the public API to exercise a restart during the retry delay.
+    drop(client);
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(2100));
+    let retry = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(retry.job_id, old);
+    assert_eq!(
+        retry.request.content_blake3,
+        old_prepared.request.content_blake3
+    );
+    assert_ne!(
+        retry.request.content_blake3,
+        new_prepared.request.content_blake3
+    );
+    assert_eq!(retry.generation_id, old_prepared.generation_id);
+    assert_ne!(retry.generation_id, new_prepared.generation_id);
+    assert_eq!(
+        serde_json::to_value(&retry).unwrap(),
+        serde_json::to_value(&old_prepared).unwrap()
+    );
+}
+
+#[test]
+fn missing_cache_reconstruction_preserves_operation_across_restart_and_config_change() {
+    let root = tempfile::tempdir().unwrap();
+    let database = root.path().join("client.sqlite");
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    let source = root.path().join("photo.jpg");
+    fs::write(&source, b"12345678").unwrap();
+    let client = Client::open(&database, config()).unwrap();
+    let id = client.enqueue(resource(&source, None)).unwrap();
+    let original = client.next_prepared(&staging).unwrap().unwrap();
+    fs::remove_file(&original.local_parts[0].path).unwrap();
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    assert!(client.needs_resource("asset", "original", 1).unwrap());
+    drop(client);
+    let mut changed_config = config();
+    changed_config.part_size = 3;
+    let client = Client::open(&database, changed_config.clone()).unwrap();
+    let fresh_source = root.path().join("fresh.jpg");
+    fs::write(&fresh_source, b"12345678").unwrap();
+    assert_eq!(client.enqueue(resource(&fresh_source, None)).unwrap(), id);
+    drop(client);
+    let client = Client::open(&database, changed_config).unwrap();
+    let rebuilt = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(
+        serde_json::to_value(&rebuilt).unwrap(),
+        serde_json::to_value(&original).unwrap()
+    );
+    for part in &rebuilt.local_parts {
+        assert_eq!(
+            fs::read(&part.path).unwrap(),
+            if part.index == 0 { b"1234" } else { b"5678" }
+        );
+    }
+    drop(client);
+    let client = Client::open(&database, config()).unwrap();
+    assert_eq!(
+        client
+            .next_prepared(&staging)
+            .unwrap()
+            .unwrap()
+            .generation_id,
+        original.generation_id
+    );
+}
+
+#[test]
+fn missing_cache_with_changed_manifest_creates_a_new_operation() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo.jpg");
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    fs::write(&source, b"12345678").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    let original_input = resource(&source, None);
+    client.enqueue(original_input.clone()).unwrap();
+    let original = client.next_prepared(&staging).unwrap().unwrap();
+    fs::remove_file(&original.local_parts[0].path).unwrap();
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    let mut changed = original_input;
+    changed.filename = "renamed.jpg".into();
+    assert_eq!(client.enqueue(changed).unwrap(), original.job_id);
+    let rebuilt = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(
+        rebuilt.request.content_blake3,
+        original.request.content_blake3
+    );
+    assert_ne!(rebuilt.generation_id, original.generation_id);
+    assert_eq!(rebuilt.request.filename, "renamed.jpg");
+}
+
+#[test]
+fn missing_cache_of_empty_source_uses_current_chunks_for_larger_replacement() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo.jpg");
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    fs::write(&source, b"").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    let input = resource(&source, None);
+    let id = client.enqueue(input.clone()).unwrap();
+    let original = client.next_prepared(&staging).unwrap().unwrap();
+    fs::remove_file(&original.local_parts[0].path).unwrap();
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    // Source metadata may remain the same while a fresh export changes length.
+    fs::write(&source, vec![42_u8; 5000]).unwrap();
+    assert_eq!(client.enqueue(input).unwrap(), id);
+    let replacement = client.next_prepared(&staging).unwrap().unwrap();
+    assert_ne!(replacement.generation_id, original.generation_id);
+    assert_eq!(replacement.request.content_size, 5000);
+    assert_eq!(replacement.request.parts.len(), 1250);
+}
+
+#[test]
+fn failed_cache_reconstruction_accepts_a_later_fresh_source() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo.jpg");
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    fs::write(&source, b"12345678").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    let id = client.enqueue(resource(&source, None)).unwrap();
+    let original = client.next_prepared(&staging).unwrap().unwrap();
+    fs::remove_file(&original.local_parts[0].path).unwrap();
+    assert!(client.next_prepared(&staging).unwrap().is_none());
+    assert_eq!(
+        client
+            .enqueue(resource(&root.path().join("missing.jpg"), None))
+            .unwrap(),
+        id
+    );
+    assert!(client.next_prepared(&staging).is_err());
+    assert!(client.needs_resource("asset", "original", 1).unwrap());
+    let fresh = root.path().join("fresh.jpg");
+    fs::write(&fresh, b"12345678").unwrap();
+    assert_eq!(client.enqueue(resource(&fresh, None)).unwrap(), id);
+    let recovered = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(recovered.generation_id, original.generation_id);
+    assert_eq!(
+        serde_json::to_value(&recovered.request).unwrap(),
+        serde_json::to_value(&original.request).unwrap()
+    );
+}

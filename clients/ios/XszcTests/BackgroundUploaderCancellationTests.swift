@@ -12,6 +12,47 @@ final class BackgroundUploaderCancellationTests: XCTestCase {
             token: "fixture-token", profile: UUID().uuidString, wifiOnly: true)
     }
 
+    private func preparedJob(jobId: String = UUID().uuidString) -> PreparedJob {
+        return PreparedJob(product: MobileContractV1.product,
+            applicationVersion: MobileContractV1.applicationVersion,
+            revision: MobileContractV1.revision, stateEpoch: MobileContractV1.stateEpoch,
+            jobId: jobId, generationId: UUID().uuidString,
+            request: CreateUpload(sourceAssetId: "photo", sourceResourceId: "original",
+                mediaKind: "photo", role: "primary", filename: "photo.jpg", mimeType: "image/jpeg",
+                sourceCreatedAtMs: 0, storageEncoding: .plainV1, contentSize: 0,
+                contentBlake3: String(repeating: "0", count: 64), metadata: nil, parts: []),
+            localParts: [])
+    }
+
+    func testCreateRequestPreservesDecodedGenerationAcrossRetries() throws {
+        let upload = try uploader()
+        defer { upload.cancel() }
+        let original = preparedJob()
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let encoded = try encoder.encode(original)
+        let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(fields["generation_id"] as? String, original.generationId)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let restored = try decoder.decode(PreparedJob.self, from: encoded)
+        for job in [original, restored] {
+            let request = try upload.createUploadRequest(job)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.url?.path, "/v1/uploads")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-token")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Upload-Operation"), original.generationId)
+            let body = try XCTUnwrap(request.httpBody)
+            let manifest = try decoder.decode(CreateUpload.self, from: body)
+            XCTAssertEqual(manifest.contentBlake3, original.request.contentBlake3)
+            let bodyFields = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertNil(bodyFields["generation_id"])
+        }
+        XCTAssertNotEqual(try upload.createUploadRequest(preparedJob(jobId: original.jobId))
+            .value(forHTTPHeaderField: "X-Upload-Operation"), original.generationId)
+    }
+
     func testExplicitStopRejectsSubmitWithoutCancellingOwningTask() async throws {
         let upload = try uploader()
         upload.cancel()
@@ -19,15 +60,7 @@ final class BackgroundUploaderCancellationTests: XCTestCase {
         XCTAssertFalse(Task.isCancelled)
         // No queue row is necessary: cancellation must win before reading the
         // old account's queue or starting another credential-bearing request.
-        let job = PreparedJob(product: MobileContractV1.product,
-            applicationVersion: MobileContractV1.applicationVersion,
-            revision: MobileContractV1.revision, stateEpoch: MobileContractV1.stateEpoch,
-            jobId: UUID().uuidString,
-            request: CreateUpload(sourceAssetId: "photo", sourceResourceId: "original",
-                mediaKind: "photo", role: "primary", filename: "photo.jpg", mimeType: "image/jpeg",
-                sourceCreatedAtMs: 0, storageEncoding: .plainV1, contentSize: 0,
-                contentBlake3: String(repeating: "0", count: 64), metadata: nil, parts: []),
-            localParts: [])
+        let job = preparedJob()
         do {
             try await upload.submit(job)
             XCTFail("A stopped uploader must reject new work")

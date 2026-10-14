@@ -82,9 +82,7 @@ final class BackgroundUploader: NSObject, URLSessionDataDelegate {
         progress: @escaping (Double) -> Void = { _ in }) async throws {
         progress(0)
         try ensureActive(jobId: job.jobId)
-        var request = authorized(path: "/v1/uploads", method: "POST")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try encoder.encode(job.request)
+        let request = try createUploadRequest(job)
         let (data, response) = try await SecureSession.shared.data(for: request)
         try UploadHTTPFailure.requireSuccess(response, data: data)
         let created = try decoder.decode(CreateUploadResponse.self, from: data)
@@ -137,6 +135,15 @@ final class BackgroundUploader: NSObject, URLSessionDataDelegate {
         }
         try await finish(job: job, uploadId: uploadId)
         progress(1)
+    }
+
+    // Reuse the prepared generation for retries, including after process restart.
+    func createUploadRequest(_ job: PreparedJob) throws -> URLRequest {
+        var request = authorized(path: "/v1/uploads", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(job.generationId, forHTTPHeaderField: "X-Upload-Operation")
+        request.httpBody = try encoder.encode(job.request)
+        return request
     }
 
     private func ensureActive(jobId: String) throws {

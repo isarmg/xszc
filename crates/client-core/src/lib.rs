@@ -290,7 +290,7 @@ impl Client {
     ) -> Result<bool, ClientError> {
         let mut connection = self.lock_connection()?;
         let exists: bool = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM jobs WHERE source_asset_id = ?1 AND source_resource_id = ?2 AND modified_ms = ?3 AND (?4 IS NULL OR source_size = ?4) AND (state='complete' OR (state='failed' AND (error='upload_superseded' OR retry_blocked=1)) OR ((automatic=1 OR EXISTS(SELECT 1 FROM batch_jobs r JOIN backup_batches b ON b.id=r.batch_id WHERE r.job_id=jobs.id AND b.cancelled=0)) AND state!='failed' AND NOT (state='retry_wait' AND prepared_json IS NULL))))",
+            "SELECT EXISTS(SELECT 1 FROM jobs WHERE source_asset_id = ?1 AND source_resource_id = ?2 AND modified_ms = ?3 AND (?4 IS NULL OR source_size = ?4) AND (state='complete' OR (state='failed' AND (error='upload_superseded' OR retry_blocked=1)) OR ((automatic=1 OR EXISTS(SELECT 1 FROM batch_jobs r JOIN backup_batches b ON b.id=r.batch_id WHERE r.job_id=jobs.id AND b.cancelled=0)) AND state!='failed' AND NOT (state='retry_wait' AND (prepared_json IS NULL OR error LIKE 'prepared parts unavailable%')))))",
             params![source_asset_id, source_resource_id, modified_ms, source_size], |row| row.get(0),
         )?;
         Ok(!exists)
@@ -382,7 +382,8 @@ impl Client {
                     source_created_at_ms=?5,metadata_json=?6,
                     remove_source_after_prepare=?7,state='discovered',
                     error=NULL,next_retry_ms=0,retry_blocked=0,updated_at_ms=?8
-                    WHERE id=?1 AND prepared_json IS NULL AND state IN ('failed','retry_wait')
+                    WHERE id=?1 AND (prepared_json IS NULL OR error LIKE 'prepared parts unavailable%')
+                    AND state IN ('failed','retry_wait')
                     AND (COALESCE(error,'')!='upload_superseded' OR ?9) AND (retry_blocked=0 OR ?9)",
             params![
                 id,
@@ -470,7 +471,7 @@ impl Client {
             let mut connection = self.lock_connection()?;
             let mut tx = connection.transaction()?;
             let changed = tx.execute(
-                "UPDATE jobs SET state='failed',prepared_json=NULL,upload_id=NULL,
+                "UPDATE jobs SET state='failed',upload_id=NULL,
                     error='prepared parts unavailable',updated_at_ms=?3
                  WHERE id=?1 AND prepared_json=?2 AND state IN ('ready','retry_wait')",
                 params![job_id, json, now_ms()],
@@ -548,7 +549,19 @@ impl Client {
         match self.prepare_job(&job_id, &input, staging_root) {
             Ok(prepared) => Ok(Some(prepared)),
             Err(error) => {
-                self.mark_failed(&job_id, &error.to_string(), true)?;
+                let rebuilding: bool = self.lock_connection()?.query_row(
+                    "SELECT prepared_json IS NOT NULL FROM jobs WHERE id=?1",
+                    params![job_id],
+                    |row| row.get(0),
+                )?;
+                // Retain the cache-rebuild marker as well as the actual failure:
+                // the next fresh export must be allowed to replace a bad source.
+                let message = if rebuilding {
+                    format!("prepared parts unavailable: {error}")
+                } else {
+                    error.to_string()
+                };
+                self.mark_failed(&job_id, &message, true)?;
                 Err(error)
             }
         }
@@ -566,15 +579,41 @@ impl Client {
             "other" => MediaKind::Other,
             value => return Err(ClientError::InvalidMediaKind(value.to_owned())),
         };
+        // A lost cache must not turn a retry of an existing operation into a
+        // fresh server upload. Keep the old intent until reconstruction commits.
+        let previous: Option<PreparedJob> = {
+            let mut connection = self.lock_connection()?;
+            let json: Option<String> = connection.query_row(
+                "SELECT prepared_json FROM jobs WHERE id=?1",
+                params![job_id],
+                |row| row.get(0),
+            )?;
+            json.as_deref().map(serde_json::from_str).transpose()?
+        };
+        if let Some(previous) = &previous {
+            previous.validate()?;
+            if previous.job_id != job_id {
+                return Err(ClientError::InvalidContract(
+                    "prepared job identity does not match its queue row".into(),
+                ));
+            }
+        }
+        let source_size = fs::metadata(&input.file_path)?.len();
+        let part_size = previous
+            .as_ref()
+            // A changed length cannot reproduce the old request. In particular,
+            // do not split a large replacement using an old empty/small part.
+            .filter(|job| job.request.content_size == source_size)
+            .and_then(|job| job.request.parts.first())
+            .map(|part| usize::try_from(part.size.max(1)))
+            .transpose()
+            .map_err(|_| ClientError::InvalidContract("prepared part size is out of range".into()))?
+            .unwrap_or(self.config.part_size);
         let staging = PrivateDirectory::create(staging_root)?;
-        let generation_id = Uuid::new_v4().to_string();
+        let mut generation_id = Uuid::new_v4().to_string();
         let relative_generation = RelativePath::new(Path::new(job_id).join(&generation_id))?;
         let output_dir = staging.resolve(&relative_generation);
-        let content = prepare_file(
-            Path::new(&input.file_path),
-            &output_dir,
-            self.config.part_size,
-        )?;
+        let mut content = prepare_file(Path::new(&input.file_path), &output_dir, part_size)?;
         let request = CreateUploadRequest {
             source_asset_id: input.source_asset_id.clone(),
             source_resource_id: input.source_resource_id.clone(),
@@ -593,6 +632,44 @@ impl Client {
                 .transpose()?,
             parts: content.parts.iter().map(|part| part.spec.clone()).collect(),
         };
+        let reuse_previous = previous
+            .as_ref()
+            .map(|previous| {
+                Ok::<_, ClientError>(
+                    serde_json::to_value(&previous.request)? == serde_json::to_value(&request)?,
+                )
+            })
+            .transpose()?
+            .unwrap_or(false);
+        if let Some(previous) = previous.filter(|_| reuse_previous) {
+            // Only publish identical bytes under the original operation UUID.
+            // Stage elsewhere first; a crash must never truncate surviving parts.
+            let original_dir = staging.resolve(&RelativePath::new(
+                Path::new(job_id).join(&previous.generation_id),
+            )?);
+            match fs::create_dir(&original_dir) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error.into()),
+            }
+            let metadata = fs::symlink_metadata(&original_dir)?;
+            if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                return Err(ClientError::InvalidContract(
+                    "unsafe original staging generation".into(),
+                ));
+            }
+            for part in &mut content.parts {
+                let destination = original_dir.join(format!("{:08}.part", part.spec.index));
+                sync_file_and_parent(&part.path)?;
+                fs::rename(&part.path, &destination)?;
+                part.path = destination;
+            }
+            sync_directory(&original_dir)?;
+            sync_directory(original_dir.parent().ok_or_else(|| {
+                ClientError::InvalidContract("missing staging job directory".into())
+            })?)?;
+            generation_id = previous.generation_id;
+        }
         let prepared = PreparedJob {
             product: MOBILE_PRODUCT.to_owned(),
             application_version: MOBILE_APPLICATION_VERSION.to_owned(),

@@ -15,3 +15,13 @@ Android 与 iOS 当前都消费云端时间线、详情、筛选、相册、收�
 
 这些边界与服务端的 [接口与消费者边界](https://github.com/isarmg/xszs/blob/main/docs/interface-consumers.md)
 保持一致。移动端不得使用管理员 Cookie，也不得为了显示账户接口而持有服务端管理员密码。
+
+### 上传操作标识
+
+Android 与 iOS 在 `POST /v1/uploads` 请求中，将持久化的
+`PreparedJob.generation_id` UUID 作为必需的 `X-Upload-Operation` 请求头发送。
+`CreateUploadRequest` 请求体保持不变。HTTP 重试和进程重启必须复用该 UUID，不能每次请求生成新标识。
+
+预处理分块丢失时，队列保留原上传清单，并等待重新导出源文件。重建时沿用原分块边界，只有完整上传
+请求完全相同时才复用原 generation UUID；内容或元数据变化会生成新 UUID，显式缩略图刷新也会开启
+新 generation。因此，缓存丢失不会把旧上传重试变成新操作，覆盖已经完成的新版本资源。

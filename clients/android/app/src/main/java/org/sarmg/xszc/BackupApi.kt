@@ -69,7 +69,8 @@ class BackupApi(
         accountId = account; deviceId = device
     }
 
-    fun createUpload(requestJson: String): JSONObject = jsonRequest("$serverUrl/v1/uploads", "POST", requestJson)
+    fun createUpload(requestJson: String, generationId: String): JSONObject =
+        jsonRequest("$serverUrl/v1/uploads", "POST", requestJson, uploadOperation = generationId)
 
     fun uploadPart(uploadId: String, index: Int, file: File, onBytesSent: (Long) -> Unit = {}) {
         val request = authenticated(Request.Builder().url("$serverUrl/v1/uploads/$uploadId/parts/$index"))
@@ -229,8 +230,9 @@ class BackupApi(
         return createTag(name)
     }
 
-    private fun jsonRequest(url: String, method: String, bodyText: String?, expectJson: Boolean = true): JSONObject {
+    private fun jsonRequest(url: String, method: String, bodyText: String?, expectJson: Boolean = true, uploadOperation: String? = null): JSONObject {
         val builder = authenticated(Request.Builder().url(url))
+        uploadOperation?.let { builder.header("X-Upload-Operation", it) }
         when (method) {
             "GET" -> builder.get()
             "POST" -> builder.post((bodyText ?: "{}").toRequestBody(jsonType))
