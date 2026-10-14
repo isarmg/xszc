@@ -64,57 +64,72 @@ enum LocalCatalog {
     }
     private static let log = Logger(subsystem: "org.sarmg.xszc", category: "LocalCatalog")
     static func scan(store: TransferStore, album: String?) throws -> [PhotoAlbum] {
-        let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        log.info("catalog authorization \(authorization.rawValue)")
-        guard authorization == .authorized || authorization == .limited else {
-            throw CoordinatorFailure.message("需要重新授权访问本地照片")
-        }
-        var selectedMembers = Set<String>()
-        if let album {
-            guard let collection = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [album], options: nil).firstObject else {
-                throw CoordinatorFailure.message("所选相册不可访问，请重新选择")
+        return try store.withCatalogMutation {
+            let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            log.info("catalog authorization \(authorization.rawValue)")
+            guard authorization == .authorized || authorization == .limited else {
+                throw CoordinatorFailure.message("需要重新授权访问本地照片")
             }
-            PHAsset.fetchAssets(in: collection, options: nil).enumerateObjects { asset, _, _ in
-                selectedMembers.insert(asset.localIdentifier)
+            var selectedMembers = Set<String>()
+            if let album {
+                guard let collection = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [album], options: nil).firstObject else {
+                    throw CoordinatorFailure.message("所选相册不可访问，请重新选择")
+                }
+                PHAsset.fetchAssets(in: collection, options: nil).enumerateObjects { asset, _, _ in
+                    selectedMembers.insert(asset.localIdentifier)
+                }
             }
-        }
-        log.info("catalog begin")
-        try store.gallery(["op": "begin_catalog"])
-        log.info("catalog database ready")
-        let fetch = PHAsset.fetchAssets(with: fetchOptions())
-        log.info("catalog fetched \(fetch.count) assets")
-        var page: [[String: Any]] = []
+            try Task.checkCancellation()
+            log.info("catalog begin")
+            try store.gallery(["op": "begin_catalog"])
+            log.info("catalog database ready")
+            let fetch = PHAsset.fetchAssets(with: fetchOptions())
+            log.info("catalog fetched \(fetch.count) assets")
+            var page: [[String: Any]] = []
 #if DEBUG
-        var enumerationSeconds = 0.0
-        var filenameSeconds = 0.0
-        log.debug("catalog asset enumeration and filename metadata lookup started")
+            var enumerationSeconds = 0.0
+            var filenameSeconds = 0.0
+            log.debug("catalog asset enumeration and filename metadata lookup started")
 #endif
-        for index in 0..<fetch.count {
+            for index in 0..<fetch.count {
+                try Task.checkCancellation()
 #if DEBUG
-            let enumerationStarted = ProcessInfo.processInfo.systemUptime
+                let enumerationStarted = ProcessInfo.processInfo.systemUptime
 #endif
-            let asset = fetch.object(at: index)
+                let asset = fetch.object(at: index)
 #if DEBUG
-            enumerationSeconds += ProcessInfo.processInfo.systemUptime - enumerationStarted
+                enumerationSeconds += ProcessInfo.processInfo.systemUptime - enumerationStarted
 #endif
-            guard asset.mediaType == .image || asset.mediaType == .video else { continue }
+                guard asset.mediaType == .image || asset.mediaType == .video else { continue }
 #if DEBUG
-            let filenameStarted = ProcessInfo.processInfo.systemUptime
+                let filenameStarted = ProcessInfo.processInfo.systemUptime
 #endif
-            let name = asset.extendedMetadata.originalFilename ?? "媒体"
+                let name = asset.extendedMetadata.originalFilename ?? "媒体"
 #if DEBUG
-            filenameSeconds += ProcessInfo.processInfo.systemUptime - filenameStarted
-            if (index + 1) % 50 == 0 || index + 1 == fetch.count {
-                log.debug("catalog progress \(index + 1, privacy: .public)/\(fetch.count, privacy: .public); enumeration \(enumerationSeconds, privacy: .public)s; filename metadata \(filenameSeconds, privacy: .public)s")
+                filenameSeconds += ProcessInfo.processInfo.systemUptime - filenameStarted
+                if (index + 1) % 50 == 0 || index + 1 == fetch.count {
+                    log.debug("catalog progress \(index + 1, privacy: .public)/\(fetch.count, privacy: .public); enumeration \(enumerationSeconds, privacy: .public)s; filename metadata \(filenameSeconds, privacy: .public)s")
+                }
+#endif
+                let descriptor = try JSONSerialization.data(withJSONObject: ["kind": "photokit", "id": asset.localIdentifier, "name": name])
+                page.append(["source_id": asset.localIdentifier, "name": name, "media_kind": asset.mediaType == .video ? "video" : "photo",
+                    "album_id": selectedMembers.contains(asset.localIdentifier) ? (album ?? "") : "",
+                    "created_ms": Int64((asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
+                    "modified_ms": Int64((asset.modificationDate ?? asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
+                    "size": 0, "descriptor": String(decoding: descriptor, as: UTF8.self)])
+                if page.count == 200 {
+#if DEBUG
+                    let writeStarted = ProcessInfo.processInfo.systemUptime
+                    log.debug("catalog batch write started: \(page.count, privacy: .public) rows")
+#endif
+                    try store.gallery(["op": "catalog", "items": page])
+#if DEBUG
+                    log.debug("catalog batch write finished after \(ProcessInfo.processInfo.systemUptime - writeStarted, privacy: .public)s")
+#endif
+                    page.removeAll(keepingCapacity: true)
+                }
             }
-#endif
-            let descriptor = try JSONSerialization.data(withJSONObject: ["kind": "photokit", "id": asset.localIdentifier, "name": name])
-            page.append(["source_id": asset.localIdentifier, "name": name, "media_kind": asset.mediaType == .video ? "video" : "photo",
-                "album_id": selectedMembers.contains(asset.localIdentifier) ? (album ?? "") : "",
-                "created_ms": Int64((asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
-                "modified_ms": Int64((asset.modificationDate ?? asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
-                "size": 0, "descriptor": String(decoding: descriptor, as: UTF8.self)])
-            if page.count == 200 {
+            if !page.isEmpty {
 #if DEBUG
                 let writeStarted = ProcessInfo.processInfo.systemUptime
                 log.debug("catalog batch write started: \(page.count, privacy: .public) rows")
@@ -123,24 +138,14 @@ enum LocalCatalog {
 #if DEBUG
                 log.debug("catalog batch write finished after \(ProcessInfo.processInfo.systemUptime - writeStarted, privacy: .public)s")
 #endif
-                page.removeAll(keepingCapacity: true)
             }
+            log.info("catalog stored; reading albums")
+            let albums = PhotoScanner().albums()
+            try Task.checkCancellation()
+            try store.gallery(["op": "finish_catalog"])
+            log.info("catalog finished with \(albums.count) albums")
+            return albums
         }
-        if !page.isEmpty {
-#if DEBUG
-            let writeStarted = ProcessInfo.processInfo.systemUptime
-            log.debug("catalog batch write started: \(page.count, privacy: .public) rows")
-#endif
-            try store.gallery(["op": "catalog", "items": page])
-#if DEBUG
-            log.debug("catalog batch write finished after \(ProcessInfo.processInfo.systemUptime - writeStarted, privacy: .public)s")
-#endif
-        }
-        log.info("catalog stored; reading albums")
-        let albums = PhotoScanner().albums()
-        try store.gallery(["op": "finish_catalog"])
-        log.info("catalog finished with \(albums.count) albums")
-        return albums
     }
     static func index(store: TransferStore, album: String?, kind: String?, unbacked: Bool) throws -> LocalGalleryDirectory {
         guard let rows = try store.gallery(["op": "local_index", "album": album as Any? ?? NSNull(),
@@ -157,26 +162,30 @@ enum LocalCatalog {
         return rows.compactMap(LocalMedia.init)
     }
     static func patch(store: TransferStore, change: LocalPhotoChanges, album: String?) throws {
-        var members = Set<String>()
-        if let album, let collection = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [album], options: nil).firstObject {
-            PHAsset.fetchAssets(in: collection, options: nil).enumerateObjects { asset, _, _ in members.insert(asset.localIdentifier) }
+        return try store.withCatalogMutation {
+            var members = Set<String>()
+            if let album, let collection = PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [album], options: nil).firstObject {
+                PHAsset.fetchAssets(in: collection, options: nil).enumerateObjects { asset, _, _ in members.insert(asset.localIdentifier) }
+            }
+            for offset in stride(from: 0, to: change.removed.count, by: 200) {
+                try Task.checkCancellation()
+                try store.gallery(["op": "patch_catalog", "items": [], "removed_source_ids": Array(change.removed[offset..<min(offset + 200, change.removed.count)])])
+            }
+            var items: [[String: Any]] = []
+            for asset in change.updated {
+                try Task.checkCancellation()
+                guard asset.mediaType == .image || asset.mediaType == .video else { continue }
+                let name = asset.extendedMetadata.originalFilename ?? "媒体"
+                let descriptor = try JSONSerialization.data(withJSONObject: ["kind": "photokit", "id": asset.localIdentifier, "name": name])
+                items.append(["source_id": asset.localIdentifier, "name": name, "media_kind": asset.mediaType == .video ? "video" : "photo",
+                    "album_id": members.contains(asset.localIdentifier) ? (album ?? "") : "",
+                    "created_ms": Int64((asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
+                    "modified_ms": Int64((asset.modificationDate ?? asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
+                    "size": 0, "descriptor": String(decoding: descriptor, as: UTF8.self)])
+                if items.count == 200 { try store.gallery(["op": "patch_catalog", "items": items, "removed_source_ids": []]); items.removeAll(keepingCapacity: true) }
+            }
+            if !items.isEmpty { try store.gallery(["op": "patch_catalog", "items": items, "removed_source_ids": []]) }
         }
-        for offset in stride(from: 0, to: change.removed.count, by: 200) {
-            try store.gallery(["op": "patch_catalog", "items": [], "removed_source_ids": Array(change.removed[offset..<min(offset + 200, change.removed.count)])])
-        }
-        var items: [[String: Any]] = []
-        for asset in change.updated {
-            guard asset.mediaType == .image || asset.mediaType == .video else { continue }
-            let name = asset.extendedMetadata.originalFilename ?? "媒体"
-            let descriptor = try JSONSerialization.data(withJSONObject: ["kind": "photokit", "id": asset.localIdentifier, "name": name])
-            items.append(["source_id": asset.localIdentifier, "name": name, "media_kind": asset.mediaType == .video ? "video" : "photo",
-                "album_id": members.contains(asset.localIdentifier) ? (album ?? "") : "",
-                "created_ms": Int64((asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
-                "modified_ms": Int64((asset.modificationDate ?? asset.creationDate ?? .distantPast).timeIntervalSince1970 * 1000),
-                "size": 0, "descriptor": String(decoding: descriptor, as: UTF8.self)])
-            if items.count == 200 { try store.gallery(["op": "patch_catalog", "items": items, "removed_source_ids": []]); items.removeAll(keepingCapacity: true) }
-        }
-        if !items.isEmpty { try store.gallery(["op": "patch_catalog", "items": items, "removed_source_ids": []]) }
     }
     static func page(store: TransferStore, album: String?, kind: String?, unbacked: Bool, offset: Int,
         limit: Int = pageSize) throws -> [LocalMedia] {
@@ -288,6 +297,9 @@ struct LocalGalleryScreen: View {
     @GestureState private var isPinching = false
     private var displayedColumns: Int { min(8, max(1, gridColumns)) }
     @State private var busy = false
+    @State private var isVisible = false
+    @State private var loadGeneration = 0
+    @State private var catalogTask: Task<[PhotoAlbum]?, Error>?
     @State private var loadedQuery: LocalGalleryQuery?
     @State private var message = ""
     @StateObject private var photoChanges = LocalPhotoLibraryChanges()
@@ -368,6 +380,7 @@ struct LocalGalleryScreen: View {
         }
         .scrollEdgeEffectHidden(true, for: .all)
         .task(id: coordinator.profile) {
+            isVisible = true
             let firstLoad = loadedQuery?.profile != coordinator.profile
             if firstLoad { resetSelection() }
             if PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined {
@@ -385,7 +398,13 @@ struct LocalGalleryScreen: View {
                 Task { await load(scan: changed) }
             }
         }
-        .onDisappear { entryGeneration += 1; selectionGeneration += 1; details.stop() }
+        .onDisappear {
+            isVisible = false; loadGeneration += 1
+            catalogTask?.cancel(); catalogTask = nil
+            if busy { photoChanges.requireFullScan() }
+            busy = false; queuedRefresh = false; queuedScan = false
+            entryGeneration += 1; selectionGeneration += 1; details.stop()
+        }
         .onChange(of: album) { _, _ in filtersChanged(scan: true) }
         .onChange(of: kind) { _, _ in filtersChanged() }
         .onChange(of: unbacked) { _, _ in filtersChanged() }
@@ -564,19 +583,27 @@ struct LocalGalleryScreen: View {
         selectionGeneration += 1
         Task { await load(scan: scan) }
     }
+    @MainActor private func finishLoad(generation: Int, profile: String) {
+        guard isVisible, generation == loadGeneration, profile == coordinator.profile else { return }
+        busy = false; catalogTask = nil
+        if queuedRefresh {
+            let scan = queuedScan
+            queuedRefresh = false; queuedScan = false
+            Task {
+                guard isVisible, generation == loadGeneration, profile == coordinator.profile else { return }
+                await load(scan: scan)
+            }
+        }
+    }
     @MainActor private func load(scan: Bool = false) async {
+        guard isVisible, !Task.isCancelled else { return }
         guard !busy else { queuedRefresh = true; queuedScan = queuedScan || scan; return }
         let query = LocalGalleryQuery(profile: coordinator.profile, album: album, kind: kind, unbacked: unbacked)
         let changingFilter = loadedQuery != query
         busy = true
-        defer {
-            busy = false
-            if queuedRefresh {
-                let scan = queuedScan
-                queuedRefresh = false; queuedScan = false
-                Task { await load(scan: scan) }
-            }
-        }
+        let generation = loadGeneration
+        defer { finishLoad(generation: generation, profile: query.profile) }
+        func alive() -> Bool { isVisible && generation == loadGeneration && query.profile == coordinator.profile && !Task.isCancelled }
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         guard status == .authorized || status == .limited else {
             directory = LocalGalleryDirectory(); details.stop(); resetSelection(); albums = []; loadedQuery = nil
@@ -589,31 +616,51 @@ struct LocalGalleryScreen: View {
             func readDirectory() async throws {
                 let next = try await Task.detached { try LocalCatalog.index(store: store, album: query.album, kind: query.kind, unbacked: query.unbacked) }.value
                 try Task.checkCancellation()
+                guard alive() else { return }
                 guard current() else { queuedRefresh = true; return }
                 directory = next; loadedQuery = query; details.reset(directory: next, store: store); message = ""
             }
             // Existing metadata is visible immediately, before any PhotoKit reconciliation.
             if status == .authorized { try await readDirectory() }
             else { directory = LocalGalleryDirectory(); details.stop() }
+            guard alive() else { return }
             if changingFilter { scrollAnchor = directory.entries.first?.id }
             guard current() else { queuedRefresh = true; queuedScan = queuedScan || scan || startedTracking; return }
             let change = photoChanges.takeChanges()
             let full = scan || startedTracking || status == .limited || change.fullScan || (query.album != nil && change.albumsChanged)
-            if full {
-                albums = try await Task.detached { try LocalCatalog.scan(store: store, album: query.album) }.value
-            } else if !change.updated.isEmpty || !change.removed.isEmpty {
-                try await Task.detached { try LocalCatalog.patch(store: store, change: change, album: query.album) }.value
+            if full || !change.updated.isEmpty || !change.removed.isEmpty {
+                let worker = Task.detached { () throws -> [PhotoAlbum]? in
+                    if full { return try LocalCatalog.scan(store: store, album: query.album) }
+                    try LocalCatalog.patch(store: store, change: change, album: query.album)
+                    return nil
+                }
+                catalogTask = worker
+                let nextAlbums = try await withTaskCancellationHandler {
+                    try await worker.value
+                } onCancel: { worker.cancel() }
+                guard alive() else { return }
+                if let nextAlbums { albums = nextAlbums }
             }
+            guard alive() else { return }
             guard current() else { queuedRefresh = true; queuedScan = queuedScan || full; return }
-            if change.albumsChanged && !full { albums = try await Task.detached { PhotoScanner().albums() }.value }
+            if change.albumsChanged && !full {
+                let nextAlbums = try await Task.detached { PhotoScanner().albums() }.value
+                guard alive() else { return }
+                albums = nextAlbums
+            }
             if full || !change.updated.isEmpty || !change.removed.isEmpty {
                 try await readDirectory()
                 let available = try await Task.detached { try LocalCatalog.index(store: store, album: nil, kind: nil, unbacked: false).positions }.value
+                guard alive(), current() else { return }
                 selected = selected.filter { available[$0.key] != nil }
             }
+            guard alive() else { return }
             guard current() else { queuedRefresh = true; return }
-        } catch is CancellationError { photoChanges.requireFullScan() }
-        catch { photoChanges.requireFullScan(); message = error.localizedDescription }
+        } catch is CancellationError {
+            // SwiftUI can cancel its task before onDisappear. Preserve consumed
+            // changes even when that cancellation has already made alive false.
+            if generation == loadGeneration, query.profile == coordinator.profile { photoChanges.requireFullScan() }
+        } catch { if alive() { photoChanges.requireFullScan(); message = error.localizedDescription } }
     }
     @MainActor private func selectScope(day: Date? = nil, deselect: Bool = false) async {
         guard isSelecting, !busy else { return }
@@ -622,14 +669,8 @@ struct LocalGalleryScreen: View {
         let ids = day == nil ? directory.entries.map(\.id) : directory.sections.first { $0.id == day }?.entries.map(\.id) ?? []
         if deselect { for id in ids { selected.removeValue(forKey: id) }; return }
         busy = true
-        defer {
-            busy = false
-            if queuedRefresh {
-                let scan = queuedScan
-                queuedRefresh = false; queuedScan = false
-                Task { await load(scan: scan) }
-            }
-        }
+        let load = loadGeneration
+        defer { finishLoad(generation: load, profile: identity) }
         do {
             let store = try coordinator.store()
             let chosen = try await Task.detached { () -> [LocalMedia] in

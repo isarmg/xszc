@@ -325,7 +325,7 @@ class SelectionRegressionTests(unittest.TestCase):
 
     def test_ios_navigation_and_filter_changes_invalidate_pending_entries(self):
         source = SourceContract('ios').source
-        self.assertTrue('.onDisappear { entryGeneration += 1; selectionGeneration += 1; details.stop() }' in source, 'Leaving the gallery must invalidate pending reads')
+        self.assertIn('entryGeneration += 1; selectionGeneration += 1; details.stop()', block(source, '.onDisappear {\n            isVisible'), 'Leaving the gallery must invalidate pending reads')
         self.assertIn('entryGeneration += 1', block(source, 'func filtersChanged'))
 
 
@@ -434,6 +434,41 @@ class UIScrollProbeTests(unittest.TestCase):
                     result = eval(predicate.replace('&&', ' and '), {'__builtins__': {}},
                                   {name: Tile(exists, hittable)})
                     self.assertEqual(result, expected)
+
+
+class CatalogLifecycleTests(unittest.TestCase):
+    def test_whole_scan_and_patch_use_same_store_lock(self):
+        source = IOS.read_text()
+        store = (args.root / 'clients/ios/Xszc/TransferStore.swift').read_text()
+        session = block(store, 'func withCatalogMutation<T>')
+        self.assertLess(session.index('catalogMutationLock.lock()'), session.index('Task.checkCancellation()'))
+        self.assertIn('defer { catalogMutationLock.unlock() }', session)
+        self.assertLess(session.index('Task.checkCancellation()'), session.index('return try body()'))
+        for name in ['scan', 'patch']:
+            body = block(source, f'static func {name}(store:')
+            self.assertIn('return try store.withCatalogMutation {', body)
+            self.assertIn('try Task.checkCancellation()', body)
+        scan = block(source, 'static func scan(store:')
+        self.assertIn('try Task.checkCancellation()\n            try store.gallery(["op": "finish_catalog"])', scan)
+
+    def test_retired_load_cannot_publish_or_enqueue_replacement_load(self):
+        source = IOS.read_text()
+        disappear = block(source, '.onDisappear {\n            isVisible')
+        for text in ['isVisible = false; loadGeneration += 1', 'catalogTask?.cancel()',
+                     'queuedRefresh = false; queuedScan = false', 'photoChanges.requireFullScan()']:
+            self.assertIn(text, disappear)
+        finish = block(source, 'private func finishLoad(')
+        self.assertEqual(finish.count('generation == loadGeneration'), 2)
+        self.assertEqual(finish.count('profile == coordinator.profile'), 2)
+        load = block(source, 'private func load(scan:')
+        self.assertIn('query.profile == coordinator.profile && !Task.isCancelled', load)
+        self.assertIn('onCancel: { worker.cancel() }', load)
+        self.assertIn('catalogTask = worker', load)
+        self.assertIn('guard alive() else { return }\n                if let nextAlbums', load)
+        self.assertIn('defer { finishLoad(generation: generation, profile: query.profile) }', load)
+        cancelled = block(load, 'catch is CancellationError')
+        self.assertNotIn('if alive()', cancelled)
+        self.assertIn('if generation == loadGeneration, query.profile == coordinator.profile { photoChanges.requireFullScan() }', cancelled)
 
 
 class CatalogDiagnosticsTests(unittest.TestCase):

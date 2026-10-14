@@ -2,6 +2,94 @@ import XCTest
 @testable import Xszc
 
 final class LocalGalleryTests: XCTestCase {
+    func testCatalogSessionsSerializeScanAndPatchThroughFinish() throws {
+        try withCatalog(count: 2) { store in
+            let staged = DispatchSemaphore(value: 0)
+            let release = DispatchSemaphore(value: 0)
+            let secondEntered = DispatchSemaphore(value: 0)
+            let firstDone = expectation(description: "first catalog finished")
+            let secondDone = expectation(description: "second catalog and patch finished")
+            let item: [String: Any] = ["source_id": Self.id(0), "name": "replacement",
+                "media_kind": "photo", "album_id": "latest", "created_ms": 0,
+                "modified_ms": 0, "size": 0, "descriptor": "{}"]
+            DispatchQueue.global().async {
+                defer { firstDone.fulfill() }
+                do {
+                    try store.withCatalogMutation {
+                        try store.gallery(["op": "begin_catalog"])
+                        try store.gallery(["op": "catalog", "items": [item]])
+                        staged.signal()
+                        guard release.wait(timeout: .now() + 5) == .success else {
+                            XCTFail("test did not release first scan"); return
+                        }
+                        try store.gallery(["op": "finish_catalog"])
+                    }
+                } catch { XCTFail("first scan: \(error)") }
+            }
+            XCTAssertEqual(staged.wait(timeout: .now() + 5), .success)
+            DispatchQueue.global().async {
+                defer { secondDone.fulfill() }
+                do {
+                    try store.withCatalogMutation {
+                        secondEntered.signal()
+                        try store.gallery(["op": "begin_catalog"])
+                        try store.gallery(["op": "catalog", "items": [item]])
+                        try store.gallery(["op": "finish_catalog"])
+                    }
+                    let visible = try LocalCatalog.index(store: store, album: "latest", kind: nil, unbacked: false)
+                    XCTAssertEqual(visible.entries.map(\.id), [Self.id(0)])
+                    try store.withCatalogMutation {
+                        try store.gallery(["op": "patch_catalog", "items": [],
+                                           "removed_source_ids": [Self.id(0)]])
+                    }
+                } catch { XCTFail("second scan: \(error)") }
+            }
+            // A second whole session cannot reset the first scan's staged rows.
+            XCTAssertEqual(secondEntered.wait(timeout: .now() + 0.1), .timedOut)
+            release.signal()
+            wait(for: [firstDone, secondDone], timeout: 10)
+            XCTAssertEqual(secondEntered.wait(timeout: .now() + 1), .success)
+            XCTAssertTrue(try LocalCatalog.index(store: store, album: nil, kind: nil, unbacked: false).entries.isEmpty)
+        }
+    }
+
+    func testCancelledCatalogWaiterDoesNotWriteAndReleasesLock() throws {
+        try withCatalog(count: 2) { store in
+            let holding = DispatchSemaphore(value: 0)
+            let release = DispatchSemaphore(value: 0)
+            let started = DispatchSemaphore(value: 0)
+            let holderDone = expectation(description: "holder released")
+            let cancelledDone = expectation(description: "cancelled waiter stopped")
+            DispatchQueue.global().async {
+                defer { holderDone.fulfill() }
+                do {
+                    try store.withCatalogMutation {
+                        holding.signal()
+                        XCTAssertEqual(release.wait(timeout: .now() + 5), .success)
+                    }
+                } catch { XCTFail("holder: \(error)") }
+            }
+            XCTAssertEqual(holding.wait(timeout: .now() + 5), .success)
+            let worker = Task.detached {
+                defer { cancelledDone.fulfill() }
+                started.signal()
+                do {
+                    try store.withCatalogMutation { XCTFail("cancelled waiter must not write") }
+                    XCTFail("expected cancellation")
+                } catch is CancellationError {
+                } catch { XCTFail("unexpected error: \(error)") }
+            }
+            XCTAssertEqual(started.wait(timeout: .now() + 5), .success)
+            worker.cancel()
+            release.signal()
+            wait(for: [holderDone, cancelledDone], timeout: 10)
+            let count = try store.withCatalogMutation {
+                try LocalCatalog.index(store: store, album: nil, kind: nil, unbacked: false).entries.count
+            }
+            XCTAssertEqual(count, 2)
+        }
+    }
+
     func testCompleteDirectoryAndVisibleDetailsHaveNo150ItemLimit() throws {
         try withCatalog(count: 10_003) { store in
             let directory = try LocalCatalog.index(store: store, album: nil, kind: nil, unbacked: false)

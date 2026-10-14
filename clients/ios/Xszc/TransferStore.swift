@@ -45,6 +45,16 @@ final class TransferStore: @unchecked Sendable {
         return (profile, target)
     }
 
+    // Catalog availability is staged across multiple native commands. Keep the
+    // entire scan (or incremental patch) exclusive, not just each SQL call.
+    private let catalogMutationLock = NSLock()
+    func withCatalogMutation<T>(_ body: () throws -> T) throws -> T {
+        catalogMutationLock.lock()
+        defer { catalogMutationLock.unlock() }
+        try Task.checkCancellation()
+        return try body()
+    }
+
     let client: RustClient
     let staging: URL
     init(profile: String) throws {
