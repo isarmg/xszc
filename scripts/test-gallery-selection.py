@@ -446,7 +446,7 @@ class CatalogDiagnosticsTests(unittest.TestCase):
         self.assertNotIn('systemUptime', release)
         self.assertIn('(index + 1) % 50 == 0 || index + 1 == fetch.count', source)
         self.assertIn('enumerationSeconds += ProcessInfo.processInfo.systemUptime - enumerationStarted', source)
-        self.assertIn('resourceSeconds += ProcessInfo.processInfo.systemUptime - resourceStarted', source)
+        self.assertIn('filenameSeconds += ProcessInfo.processInfo.systemUptime - filenameStarted', source)
         self.assertEqual(source.count('catalog batch write started:'), 2)
         self.assertEqual(source.count('catalog batch write finished after'), 2)
         for line in source.splitlines():
@@ -455,10 +455,35 @@ class CatalogDiagnosticsTests(unittest.TestCase):
                     self.assertEqual(line.count('\\('), line.count('privacy: .public'))
                 for sensitive in ('localIdentifier', 'originalFilename', 'descriptor', 'name)', 'path'):
                     self.assertNotIn(sensitive, line)
-        self.assertEqual(release.count('PHAssetResource.assetResources(for: asset)'), 1)
+        self.assertEqual(release.count('asset.extendedMetadata.originalFilename'), 1)
         self.assertEqual(release.count('try store.gallery(["op": "catalog", "items": page])'), 2)
         self.assertIn('if page.count == 200', release)
         self.assertNotRegex(release, r'sleep|timeout')
+
+
+    def test_original_filename_prefetch_covers_scan_and_observer_changes(self):
+        source = IOS.read_text()
+        options = block(source, 'static func fetchOptions()')
+        self.assertIn('options.prefetchAssetExtendedMetadata = true', options)
+        self.assertIn('return options', options)
+        scan = block(source, 'static func scan(store:')
+        self.assertIn('PHAsset.fetchAssets(with: fetchOptions())', scan)
+        tracking = block(source, 'func ensureTracking()')
+        self.assertIn('PHAsset.fetchAssets(with: LocalCatalog.fetchOptions())', tracking)
+        changes = block(source, 'func photoLibraryDidChange(')
+        self.assertIn('self.assets = details.fetchResultAfterChanges', changes)
+        self.assertIn('details.insertedObjects + details.changedObjects', changes)
+        for section in [scan, block(source, 'static func patch(store:')]:
+            self.assertIn('let name = asset.extendedMetadata.originalFilename ?? "媒体"', section)
+            self.assertNotIn('PHAssetResource.assetResources', section)
+            self.assertIn('"id": asset.localIdentifier, "name": name', section)
+        scanner = (args.root / 'clients/ios/Xszc/PhotoScanner.swift').read_text()
+        self.assertIn('PHAssetResource.assetResources(for: asset)', scanner)
+        self.assertIn('filename: resource.originalFilename', scanner)
+        selected = (args.root / 'clients/ios/Xszc/SelectedMedia.swift').read_text()
+        self.assertIn('descriptor["id"] as? String', selected)
+        self.assertIn('PhotoScanner().enqueue(asset: asset', selected)
+        self.assertIn('iOS: "27.0"', (args.root / 'clients/ios/project.yml').read_text())
 
 
 if __name__ == '__main__':

@@ -55,6 +55,13 @@ private struct LocalGalleryQuery: Equatable {
 
 enum LocalCatalog {
     static let pageSize = 150
+    static func fetchOptions() -> PHFetchOptions {
+        let options = PHFetchOptions()
+        // iOS 27 fetches original names with the assets, without per-asset
+        // resource enumeration. Backup still resolves the actual resources.
+        options.prefetchAssetExtendedMetadata = true
+        return options
+    }
     private static let log = Logger(subsystem: "org.sarmg.xszc", category: "LocalCatalog")
     static func scan(store: TransferStore, album: String?) throws -> [PhotoAlbum] {
         let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
@@ -74,13 +81,13 @@ enum LocalCatalog {
         log.info("catalog begin")
         try store.gallery(["op": "begin_catalog"])
         log.info("catalog database ready")
-        let fetch = PHAsset.fetchAssets(with: nil)
+        let fetch = PHAsset.fetchAssets(with: fetchOptions())
         log.info("catalog fetched \(fetch.count) assets")
         var page: [[String: Any]] = []
 #if DEBUG
         var enumerationSeconds = 0.0
-        var resourceSeconds = 0.0
-        log.debug("catalog asset enumeration and resource lookup started")
+        var filenameSeconds = 0.0
+        log.debug("catalog asset enumeration and filename metadata lookup started")
 #endif
         for index in 0..<fetch.count {
 #if DEBUG
@@ -92,13 +99,13 @@ enum LocalCatalog {
 #endif
             guard asset.mediaType == .image || asset.mediaType == .video else { continue }
 #if DEBUG
-            let resourceStarted = ProcessInfo.processInfo.systemUptime
+            let filenameStarted = ProcessInfo.processInfo.systemUptime
 #endif
-            let name = PHAssetResource.assetResources(for: asset).first?.originalFilename ?? "媒体"
+            let name = asset.extendedMetadata.originalFilename ?? "媒体"
 #if DEBUG
-            resourceSeconds += ProcessInfo.processInfo.systemUptime - resourceStarted
+            filenameSeconds += ProcessInfo.processInfo.systemUptime - filenameStarted
             if (index + 1) % 50 == 0 || index + 1 == fetch.count {
-                log.debug("catalog progress \(index + 1, privacy: .public)/\(fetch.count, privacy: .public); enumeration \(enumerationSeconds, privacy: .public)s; resources \(resourceSeconds, privacy: .public)s")
+                log.debug("catalog progress \(index + 1, privacy: .public)/\(fetch.count, privacy: .public); enumeration \(enumerationSeconds, privacy: .public)s; filename metadata \(filenameSeconds, privacy: .public)s")
             }
 #endif
             let descriptor = try JSONSerialization.data(withJSONObject: ["kind": "photokit", "id": asset.localIdentifier, "name": name])
@@ -160,7 +167,7 @@ enum LocalCatalog {
         var items: [[String: Any]] = []
         for asset in change.updated {
             guard asset.mediaType == .image || asset.mediaType == .video else { continue }
-            let name = PHAssetResource.assetResources(for: asset).first?.originalFilename ?? "媒体"
+            let name = asset.extendedMetadata.originalFilename ?? "媒体"
             let descriptor = try JSONSerialization.data(withJSONObject: ["kind": "photokit", "id": asset.localIdentifier, "name": name])
             items.append(["source_id": asset.localIdentifier, "name": name, "media_kind": asset.mediaType == .video ? "video" : "photo",
                 "album_id": members.contains(asset.localIdentifier) ? (album ?? "") : "",
@@ -219,7 +226,7 @@ private final class LocalPhotoLibraryChanges: NSObject, ObservableObject, PHPhot
     // Idempotence preserves pending changes when another load is already queued.
     @MainActor func ensureTracking() -> Bool {
         guard assets == nil else { return false }
-        assets = PHAsset.fetchAssets(with: nil)
+        assets = PHAsset.fetchAssets(with: LocalCatalog.fetchOptions())
         collections = PHAssetCollection.fetchAssetCollections(with: .album, subtype: .any, options: nil)
         libraryAlbums = PHAssetCollection.fetchAssetCollections(with: .smartAlbum, subtype: .smartAlbumUserLibrary, options: nil)
         Self.log.info("photo tracking initialized with \(self.assets?.count ?? 0) assets")
