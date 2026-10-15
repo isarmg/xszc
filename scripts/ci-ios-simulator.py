@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Overlap the CI simulator's cold boot with toolchain and native builds."""
+"""Overlap the CI simulator's cold boot with native builds."""
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -35,16 +36,20 @@ def boot(udid, status):
 
 def wait(udid, status):
     deadline = time.monotonic() + 660
+    print(datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'iOS boot status file wait started', flush=True)
     while not status.exists():
         if time.monotonic() >= deadline:
             raise TimeoutError('simulator boot worker did not report its result')
         time.sleep(1)
+    print(datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'iOS boot status file wait finished', flush=True)
     result = json.loads(status.read_text())
     if result['udid'] != udid:
         raise ValueError('simulator boot result belongs to a different device')
     if result['returncode'] != 0:
         raise subprocess.CalledProcessError(result['returncode'], ['xcrun', 'simctl', 'boot', udid])
+    print(datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'iOS bootstatus started', flush=True)
     subprocess.run(['xcrun', 'simctl', 'bootstatus', udid, '-b'], check=True, timeout=360)
+    print(datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'iOS bootstatus finished', flush=True)
 
 
 def main():

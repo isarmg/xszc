@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Keep asynchronous CI boot failure handling and device identity strict."""
+from contextlib import redirect_stdout
+from datetime import datetime, timezone
+import io
 import importlib.util
 import json
 from pathlib import Path
@@ -58,6 +61,35 @@ class SimulatorTests(unittest.TestCase):
         with patch.object(simulator.subprocess, 'run') as run:
             simulator.wait('same-device', self.status)
         run.assert_called_once_with(['xcrun', 'simctl', 'bootstatus', 'same-device', '-b'], check=True, timeout=360)
+
+    def test_wait_timestamps_split_status_file_and_bootstatus_in_utc(self):
+        self.status_for()
+        output = io.StringIO()
+        earliest = datetime.now(timezone.utc).replace(microsecond=0)
+        with redirect_stdout(output), patch.object(simulator.subprocess, 'run'):
+            simulator.wait('same-device', self.status)
+        latest = datetime.now(timezone.utc)
+        lines = output.getvalue().splitlines()
+        self.assertEqual([line.split(' ', 1)[1] for line in lines], [
+            'iOS boot status file wait started', 'iOS boot status file wait finished',
+            'iOS bootstatus started', 'iOS bootstatus finished',
+        ])
+        for line in lines:
+            stamp = datetime.strptime(line.split(' ', 1)[0], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+            self.assertLessEqual(earliest, stamp)
+            self.assertLessEqual(stamp, latest)
+
+    def test_bootstatus_error_or_timeout_is_not_masked_by_timestamp(self):
+        self.status_for()
+        for failure in (subprocess.CalledProcessError(9, ['bootstatus']),
+                        subprocess.TimeoutExpired('bootstatus', 360)):
+            with self.subTest(failure=failure), redirect_stdout(io.StringIO()) as output, \
+                 patch.object(simulator.subprocess, 'run', side_effect=failure):
+                with self.assertRaises(type(failure)) as error:
+                    simulator.wait('same-device', self.status)
+                self.assertIs(error.exception, failure)
+                self.assertIn('iOS bootstatus started', output.getvalue())
+                self.assertNotIn('iOS bootstatus finished', output.getvalue())
 
     def test_failed_boot_is_not_masked_by_readiness(self):
         self.status_for(code=7)

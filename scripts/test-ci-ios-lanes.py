@@ -220,13 +220,20 @@ class LivePhotoImportTests(unittest.TestCase):
 class WorkflowTests(unittest.TestCase):
     def test_media_overlaps_build_but_reset_follows_state_tests(self):
         simulator = job('ios_simulator')
-        sequence = ['ci-ios-simulator.py start', 'ci-ios-prepare.sh start media',
-                    'uses: dtolnay/rust-toolchain@', 'build-for-testing',
+        sequence = ['ci-ios-prepare.sh start\n', 'uses: dtolnay/rust-toolchain@',
+                    'ci-ios-prepare.sh wait\n', 'ci-ios-simulator.py start',
+                    'ci-ios-prepare.sh start media', 'build-ios-rust.sh simulator',
+                    'build-for-testing',
                     'ci-ios-prepare.sh wait media', '-only-testing:XszcTests ',
                     'seed-ios-ui.sh "$XSZC_TEST_SIMULATOR" reset', 'python3 scripts/test-ios-ui.py ']
         offsets = [simulator.index(value) for value in sequence]
         self.assertEqual(offsets, sorted(offsets))
         steps = re.split(r'^      - ', simulator, flags=re.M)
+        for command in ('ci-ios-prepare.sh wait\n', 'ci-ios-simulator.py start',
+                        'ci-ios-prepare.sh start media'):
+            guarded_step = next(step for step in steps if command in step)
+            self.assertNotIn('continue-on-error:', guarded_step)
+            self.assertNotIn('if:', guarded_step)
         build = next(step for step in steps if 'build-for-testing' in step)
         self.assertIn('timeout-minutes: 10', build)
         self.assertNotIn('ci-ios-prepare.sh wait media', build)
