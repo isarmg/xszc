@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Overlap the CI simulator's cold boot with native builds."""
+"""Overlap the CI simulator's cold boot with toolchain and native builds."""
 from datetime import datetime, timezone
 import json
 import os
