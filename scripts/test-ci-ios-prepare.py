@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise cross-step preparation and failure propagation with real subprocesses."""
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import shutil
@@ -60,10 +61,56 @@ exit "${SANDBOX_CODE:-0}"
         self.assertIn('brew:install xcodegen', result.stdout)
         self.assertIn('sandbox-executed', result.stdout)
 
+    def assert_timestamps(self, output, labels, earliest, latest):
+        stamps = []
+        lines = output.splitlines()
+        for label in labels:
+            matches = [line for line in lines if line.endswith(' ' + label)]
+            self.assertEqual(len(matches), 1, (label, output))
+            stamp = datetime.strptime(matches[0].split(' ', 1)[0],
+                                      '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+            self.assertLessEqual(earliest, stamp)
+            self.assertLessEqual(stamp, latest)
+            stamps.append(stamp)
+        self.assertEqual(stamps, sorted(stamps))
+        positions = [output.index(' ' + label) for label in labels]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_tools_log_real_utc_phase_timestamps(self):
+        # Logs are replayed later by wait; timestamps must come from the worker.
+        self.env['TZ'] = 'Pacific/Honolulu'
+        earliest = datetime.now(timezone.utc).replace(microsecond=0)
+        result = self.run_step('worker')
+        latest = datetime.now(timezone.utc)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_timestamps(result.stdout, [
+            'iOS tools worker entered', 'iOS brew started', 'iOS brew finished',
+            'iOS Swift sandbox started', 'iOS Swift sandbox finished',
+        ], earliest, latest)
+        self.assertLess(result.stdout.index('iOS brew started'), result.stdout.index('brew:install'))
+        self.assertLess(result.stdout.index('sandbox-executed'), result.stdout.index('iOS Swift sandbox finished'))
+
+    def test_media_logs_wait_start_and_original_result_on_success_or_failure(self):
+        self.media_stubs()
+        for code in ('0', '8'):
+            with self.subTest(code=code):
+                self.env['BOOT_CODE'] = code
+                earliest = datetime.now(timezone.utc).replace(microsecond=0)
+                result = self.run_step('worker', 'media')
+                self.assertEqual(result.returncode, int(code), result.stderr)
+                self.assert_timestamps(result.stdout, [
+                    'iOS media worker entered', 'iOS simulator wait started',
+                    f'iOS simulator wait finished: exit {code}',
+                ], earliest, datetime.now(timezone.utc))
+                self.assertEqual('media-executed' in result.stdout, code == '0')
+
     def test_brew_failure_preserves_code_and_stops_later_work(self):
         self.env['BREW_CODE'] = '7'
         self.run_step('start')
-        self.assertEqual(self.run_step('wait').returncode, 7)
+        result = self.run_step('wait')
+        self.assertEqual(result.returncode, 7)
+        self.assertIn('iOS brew started', result.stdout)
+        self.assertNotIn('iOS brew finished', result.stdout)
         self.assertFalse((self.root / 'sandbox-ran').exists())
 
     def test_wrong_xcodegen_is_rejected_before_sandbox(self):
@@ -78,6 +125,8 @@ exit "${SANDBOX_CODE:-0}"
         result = self.run_step('wait')
         self.assertEqual(result.returncode, 9)
         self.assertIn('sandbox-executed', result.stdout)
+        self.assertIn('iOS Swift sandbox started', result.stdout)
+        self.assertNotIn('iOS Swift sandbox finished', result.stdout)
 
     def test_malformed_result_fails_closed(self):
         (self.root / 'xszc-ios-prepare.status').write_text('not-a-status')
