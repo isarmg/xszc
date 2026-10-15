@@ -1440,3 +1440,62 @@ fn failed_cache_reconstruction_accepts_a_later_fresh_source() {
         serde_json::to_value(&original.request).unwrap()
     );
 }
+
+#[test]
+fn android_selection_uses_current_media_version_for_deduplication() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("photo.jpg");
+    fs::write(&source, b"12345678").unwrap();
+    let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
+    client
+        .transfer(request(
+            json!({"op":"bind","server":"https://backup.example",
+        "account_id":Uuid::new_v4(),"device_id":Uuid::new_v4()}),
+        ))
+        .unwrap();
+    let old_id = client.enqueue(resource(&source, None)).unwrap();
+    let staging = root.path().join(MOBILE_STAGING_DIRECTORY);
+    let old = client.next_prepared(&staging).unwrap().unwrap();
+    client
+        .transfer(request(json!({"op":"receipt","job_id":old_id,
+        "asset_id":Uuid::new_v4(),"resource_id":Uuid::new_v4(),
+        "content_blake3":old.request.content_blake3})))
+        .unwrap();
+    let selection = batch(&client);
+    let link = |modified_ms| {
+        client
+            .transfer(request(json!({"op":"link_resource",
+        "batch_id":selection,"item_id":"selected","asset":"asset",
+        "resource":"original","modified_ms":modified_ms,"source_size":8})))
+            .unwrap()
+    };
+    // An unchanged selection correctly reuses the completed receipt.
+    assert_eq!(link(1), json!(true));
+    // The user edits a queued photo before preparation, retaining its byte count.
+    fs::write(&source, b"87654321").unwrap();
+    assert_eq!(
+        link(1),
+        json!(true),
+        "the stale descriptor incorrectly reuses old bytes"
+    );
+    assert_eq!(
+        link(2),
+        json!(false),
+        "the current media timestamp requires new work"
+    );
+    let mut current = resource(&source, Some(&selection));
+    current.modified_ms = 2;
+    let new_id = client.enqueue(current).unwrap();
+    assert_ne!(new_id, old_id);
+    let new = client.next_prepared(&staging).unwrap().unwrap();
+    assert_eq!(
+        new.request.content_blake3,
+        blake3::hash(b"87654321").to_hex().to_string()
+    );
+    assert_ne!(new.request.content_blake3, old.request.content_blake3);
+    assert_eq!(
+        link(2),
+        json!(true),
+        "the newly staged version remains deduplicated"
+    );
+}
