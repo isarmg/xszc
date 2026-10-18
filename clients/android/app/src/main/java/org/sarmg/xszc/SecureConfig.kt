@@ -1,8 +1,6 @@
 package org.sarmg.xszc
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import org.json.JSONArray
 
 data class BackupSnapshot(
@@ -17,151 +15,161 @@ data class BackupSnapshot(
     val currentItem: String = "",
 )
 
-class SecureConfig(context: Context) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-    private val preferences = EncryptedSharedPreferences.create(
-        context,
-        MobileContractV1.PREFERENCES_FILE,
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+class SecureConfig internal constructor(context: Context, name: String) {
+    constructor(context: Context) : this(context, MobileContractV1.PREFERENCES_FILE)
+    private val store = try { androidConfigStore(context, name) }
+        catch (failure: Exception) { throw ConfigStorageException("无法打开应用私有配置目录，请检查存储状态", failure) }
 
-    companion object { private val connectionLock = Any() }
+    init { store.read { } }
+
     data class Connection(val server: String, val authorizationCode: String, val token: String,
         val accountId: String, val deviceId: String, val profile: String = provisionalProfileKey(server, authorizationCode))
-    val profile: String get() = synchronized(connectionLock) {
-        preferences.getString("queue_profile_v04", null) ?: provisionalProfileKey(serverUrl, authorizationCode)
+
+    data class BackupPreferences(val auto: Boolean, val wifi: Boolean, val charging: Boolean,
+        val photos: Boolean, val videos: Boolean, val camera: Boolean, val albums: Set<String>)
+    data class SettingsSnapshot(val connection: Connection, val preferences: BackupPreferences)
+
+    private fun albums(values: ConfigValues): Set<String> = try {
+        val array = JSONArray(values.string("selected_album_ids", "[]"))
+        buildSet { for (index in 0 until array.length()) add(array.getString(index)) }
+    } catch (failure: Exception) { throw ConfigStorageException("本地相册配置无效，原数据已保留", failure) }
+
+    fun settingsSnapshot(): SettingsSnapshot = store.read {
+        try {
+            SettingsSnapshot(connection(it), BackupPreferences(it.boolean("auto_backup", false),
+                it.boolean("wifi_only", true), it.boolean("charging_only", false), it.boolean("backup_medias", true),
+                it.boolean("backup_videos", true), it.boolean("camera_only", true), albums(it)))
+        } catch (failure: ConfigStorageException) { throw failure }
+        catch (failure: Exception) { throw ConfigStorageException("本地备份设置无效，原数据已保留", failure) }
     }
-    fun connection(): Connection = synchronized(connectionLock) { Connection(serverUrl, authorizationCode, bearerToken, accountId, deviceId, profile) }
-    fun saveCredentials(server: String, code: String) = synchronized(connectionLock) {
-        serverUrl = server; authorizationCode = code
+
+    private fun profile(values: ConfigValues): String = values.entries["queue_profile_v04"]
+        ?: provisionalProfileKey(values.string("server_url"), values.string("authorization_code"))
+    private fun connection(values: ConfigValues, saved: Boolean = false): Connection {
+        val active = saved || !values.boolean("account_signed_out", false)
+        return Connection(values.string("server_url"), if (active) values.string("authorization_code") else "",
+            if (active) values.string(MobileContractV1.TOKEN_KEY) else "", values.string("account_id_v04"),
+            values.string("device_id_v04"), profile(values))
     }
+
+    val profile: String get() = store.read(::profile)
+    fun connection(): Connection = store.read { connection(it) }
+    fun savedConnection(): Connection = store.read { connection(it, saved = true) }
+
+    private fun setCredentials(values: ConfigValues, server: String, code: String) {
+        val normalizedServer = server.trim().trimEnd('/')
+        val normalizedCode = code.trim()
+        if (normalizedServer != values.string("server_url") || normalizedCode != values.string("authorization_code")) {
+            values.remove(MobileContractV1.TOKEN_KEY)
+            values.remove("queue_profile_v04")
+        }
+        values.set("server_url", normalizedServer)
+        values.set("authorization_code", normalizedCode)
+    }
+    fun saveCredentials(server: String, code: String) = store.update { setCredentials(it, server, code) }
 
     fun saveAuthenticatedConnection(expected: Connection, server: String, code: String,
-        api: BackupApi, token: String, storageProfile: String) = synchronized(connectionLock) {
-        check(connection() == expected) { "配对信息已改变，请重新配对" }
+        api: BackupApi, token: String, storageProfile: String) = store.update { values ->
+        check(connection(values) == expected) { "配对信息已改变，请重新配对" }
         check(token.isNotBlank()) { "服务器没有返回有效配对凭据" }
         require(storageProfile.matches(Regex("[0-9a-f]{64}")))
-        preferences.edit().putString("queue_profile_v04", storageProfile)
-            .putString("server_url", server).putString("authorization_code", code)
-            .putString("account_id_v04", api.accountId)
-            .putString("device_id_v04", api.deviceId).putString(MobileContractV1.TOKEN_KEY, token)
-            .putBoolean("account_signed_out", false).commit().also { check(it) { "无法保存登录凭据" } }
+        values.set("queue_profile_v04", storageProfile)
+        values.set("server_url", server.trim().trimEnd('/'))
+        values.set("authorization_code", code.trim())
+        values.set("account_id_v04", api.accountId)
+        values.set("device_id_v04", api.deviceId)
+        values.set(MobileContractV1.TOKEN_KEY, token)
+        values.set("account_signed_out", false)
     }
 
-    val isLoggedIn: Boolean get() = !preferences.getBoolean("account_signed_out", false) && savedAuthorizationCode.isNotBlank() && savedBearerToken.isNotBlank()
-    val savedAuthorizationCode: String get() = preferences.getString("authorization_code", "") ?: ""
-    private val savedBearerToken: String get() = preferences.getString(MobileContractV1.TOKEN_KEY, "") ?: ""
-    fun savedConnection(): Connection = synchronized(connectionLock) {
-        Connection(serverUrl, savedAuthorizationCode, savedBearerToken, accountId, deviceId, profile)
+    val isLoggedIn: Boolean get() = store.read {
+        !it.boolean("account_signed_out", false) && it.string("authorization_code").isNotBlank() &&
+            it.string(MobileContractV1.TOKEN_KEY).isNotBlank()
     }
-    fun logout() = synchronized(connectionLock) {
-        check(preferences.edit().putBoolean("account_signed_out", true).commit()) { "无法保存退出状态" }
-    }
-    fun verifyWritable() {
-        check(preferences.edit().putBoolean("storage_verified", true).commit()) { "无法保存登录凭据，请重试" }
-    }
+    val savedAuthorizationCode: String get() = store.read { it.string("authorization_code") }
+    fun logout() = store.update { it.set("account_signed_out", true) }
+    fun verifyWritable() = store.update { it.set("storage_verified", true) }
 
     var serverUrl: String
-        get() = preferences.getString("server_url", "") ?: ""
-        set(value) {
-            val normalized = value.trim().trimEnd('/')
-            val editor = preferences.edit().putString("server_url", normalized)
-            if (normalized != serverUrl) editor.remove(MobileContractV1.TOKEN_KEY).remove("queue_profile_v04")
-            editor.apply()
-        }
-
+        get() = store.read { it.string("server_url") }
+        set(value) = store.update { setCredentials(it, value, it.string("authorization_code")) }
     var authorizationCode: String
-        get() = if (preferences.getBoolean("account_signed_out", false)) "" else savedAuthorizationCode
-        set(value) {
-            val normalized = value.trim()
-            val editor = preferences.edit().putString("authorization_code", normalized)
-            if (normalized != authorizationCode) editor.remove(MobileContractV1.TOKEN_KEY).remove("queue_profile_v04")
-            editor.apply()
-        }
-
+        get() = store.read { if (it.boolean("account_signed_out", false)) "" else it.string("authorization_code") }
+        set(value) = store.update { setCredentials(it, it.string("server_url"), value) }
     var bearerToken: String
-        get() = if (preferences.getBoolean("account_signed_out", false)) "" else savedBearerToken
-        set(value) = preferences.edit().putString(MobileContractV1.TOKEN_KEY, value).apply()
-
+        get() = store.read { if (it.boolean("account_signed_out", false)) "" else it.string(MobileContractV1.TOKEN_KEY) }
+        set(value) = store.update { it.set(MobileContractV1.TOKEN_KEY, value) }
     var accountId: String
-        get() = preferences.getString("account_id_v04", "") ?: ""
-        set(value) = preferences.edit().putString("account_id_v04", value).apply()
+        get() = store.read { it.string("account_id_v04") }
+        set(value) = store.update { it.set("account_id_v04", value) }
     var deviceId: String
-        get() = preferences.getString("device_id_v04", "") ?: ""
-        set(value) = preferences.edit().putString("device_id_v04", value).apply()
+        get() = store.read { it.string("device_id_v04") }
+        set(value) = store.update { it.set("device_id_v04", value) }
     var autoBackup: Boolean
-        get() = preferences.getBoolean("auto_backup", false)
-        set(value) = preferences.edit().putBoolean("auto_backup", value).apply()
-
+        get() = store.read { it.boolean("auto_backup", false) }
+        set(value) = store.update { it.set("auto_backup", value) }
     var wifiOnly: Boolean
-        get() = preferences.getBoolean("wifi_only", true)
-        set(value) = preferences.edit().putBoolean("wifi_only", value).apply()
-
+        get() = store.read { it.boolean("wifi_only", true) }
+        set(value) = store.update { it.set("wifi_only", value) }
     var chargingOnly: Boolean
-        get() = preferences.getBoolean("charging_only", false)
-        set(value) = preferences.edit().putBoolean("charging_only", value).apply()
-
+        get() = store.read { it.boolean("charging_only", false) }
+        set(value) = store.update { it.set("charging_only", value) }
     var backupPhotos: Boolean
-        get() = preferences.getBoolean("backup_medias", true)
-        set(value) = preferences.edit().putBoolean("backup_medias", value).apply()
-
+        get() = store.read { it.boolean("backup_medias", true) }
+        set(value) = store.update { it.set("backup_medias", value) }
     var backupVideos: Boolean
-        get() = preferences.getBoolean("backup_videos", true)
-        set(value) = preferences.edit().putBoolean("backup_videos", value).apply()
-
+        get() = store.read { it.boolean("backup_videos", true) }
+        set(value) = store.update { it.set("backup_videos", value) }
     var cameraOnly: Boolean
-        get() = preferences.getBoolean("camera_only", true)
-        set(value) = preferences.edit().putBoolean("camera_only", value).apply()
-
+        get() = store.read { it.boolean("camera_only", true) }
+        set(value) = store.update { it.set("camera_only", value) }
     var selectedAlbumIds: Set<String>
-        get() = runCatching {
-            val array = JSONArray(preferences.getString("selected_album_ids", "[]"))
-            buildSet { for (index in 0 until array.length()) add(array.getString(index)) }
-        }.getOrDefault(emptySet())
-        set(value) {
+        get() = store.read(::albums)
+        set(value) = store.update {
             val array = JSONArray()
             value.sorted().forEach(array::put)
-            preferences.edit()
-                .putString("selected_album_ids", array.toString())
-                .putBoolean("album_selection_configured", true)
-                .apply()
+            it.set("selected_album_ids", array.toString())
+            it.set("album_selection_configured", true)
         }
-
+    fun saveBackupPreferences(auto: Boolean, wifi: Boolean, charging: Boolean, photos: Boolean,
+        videos: Boolean, camera: Boolean, albums: Set<String>) = store.update {
+        it.set("auto_backup", auto)
+        it.set("wifi_only", wifi)
+        it.set("charging_only", charging)
+        it.set("backup_medias", photos)
+        it.set("backup_videos", videos)
+        it.set("camera_only", camera)
+        val array = JSONArray()
+        albums.sorted().forEach(array::put)
+        it.set("selected_album_ids", array.toString())
+        it.set("album_selection_configured", true)
+    }
     val albumSelectionConfigured: Boolean
-        get() = preferences.getBoolean("album_selection_configured", false)
-
+        get() = store.read { it.boolean("album_selection_configured", false) }
     var librarySyncSequence: Long
-        get() = preferences.getLong("library_sync_sequence", 0L)
-        set(value) = preferences.edit().putLong("library_sync_sequence", value).apply()
+        get() = store.read { it.long("library_sync_sequence") }
+        set(value) = store.update { it.set("library_sync_sequence", value) }
 
-    fun snapshot(): BackupSnapshot = BackupSnapshot(
-        state = preferences.getString("backup_state", "idle") ?: "idle",
-        message = preferences.getString("backup_message", "尚未开始备份") ?: "尚未开始备份",
-        lastRunAt = preferences.getLong("last_run_at", 0L),
-        lastSuccessAt = preferences.getLong("last_success_at", 0L),
-        discovered = preferences.getInt("last_discovered", 0),
-        completed = preferences.getInt("last_completed", 0),
-        failed = preferences.getInt("last_failed", 0),
-        uploadedBytes = preferences.getLong("last_uploaded_bytes", 0L),
-        currentItem = preferences.getString("current_item", "") ?: "",
-    )
-
-    fun saveSnapshot(snapshot: BackupSnapshot) {
-        preferences.edit()
-            .putString("backup_state", snapshot.state)
-            .putString("backup_message", snapshot.message)
-            .putLong("last_run_at", snapshot.lastRunAt)
-            .putLong("last_success_at", snapshot.lastSuccessAt)
-            .putInt("last_discovered", snapshot.discovered)
-            .putInt("last_completed", snapshot.completed)
-            .putInt("last_failed", snapshot.failed)
-            .putLong("last_uploaded_bytes", snapshot.uploadedBytes)
-            .putString("current_item", snapshot.currentItem)
-            .apply()
+    fun snapshot(): BackupSnapshot = store.read {
+        BackupSnapshot(state = it.string("backup_state", "idle"),
+            message = it.string("backup_message", "尚未开始备份"), lastRunAt = it.long("last_run_at"),
+            lastSuccessAt = it.long("last_success_at"), discovered = it.int("last_discovered"),
+            completed = it.int("last_completed"), failed = it.int("last_failed"),
+            uploadedBytes = it.long("last_uploaded_bytes"), currentItem = it.string("current_item"))
     }
 
+    fun saveSnapshot(snapshot: BackupSnapshot) = store.update {
+        it.set("backup_state", snapshot.state)
+        it.set("backup_message", snapshot.message)
+        it.set("last_run_at", snapshot.lastRunAt)
+        it.set("last_success_at", snapshot.lastSuccessAt)
+        it.set("last_discovered", snapshot.discovered)
+        it.set("last_completed", snapshot.completed)
+        it.set("last_failed", snapshot.failed)
+        it.set("last_uploaded_bytes", snapshot.uploadedBytes)
+        it.set("current_item", snapshot.currentItem)
+    }
 }
+
+internal fun <T> readConfiguration(block: () -> T): Result<T> = try { Result.success(block()) }
+    catch (failure: ConfigStorageException) { Result.failure(failure) }

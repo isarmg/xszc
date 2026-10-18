@@ -24,6 +24,10 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
         backupMutex.lock()
         return try {
             withContext(Dispatchers.IO) { runBackup() }
+        } catch (failure: ConfigStorageException) {
+            // Configuration corruption or an unknown commit is not a transient network retry.
+            Result.failure(workDataOf("failure_kind" to "local_config",
+                "message" to (failure.message ?: "本地配置不可用，原任务已保留").take(512)))
         } finally {
             backupMutex.unlock()
         }
@@ -57,10 +61,20 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
                     if (envelope.isNull("value")) break
                     val job = envelope.getJSONObject("value")
                     MobileContractV1.requireIdentity(job)
-                    snapshot = snapshot.copy(message = "正在上传：${job.getJSONObject("request").getString("filename")}")
-                    publish(config, snapshot, "上传资源", 0, 0)
-                    snapshot = snapshot.copy(uploadedBytes = snapshot.uploadedBytes + uploadJob(api, handle, job, profile, telemetrySession))
-                    resourceCount++
+                    try {
+                        snapshot = snapshot.copy(message = "正在上传：${job.getJSONObject("request").getString("filename")}")
+                        publish(config, snapshot, "上传资源", 0, 0)
+                        snapshot = snapshot.copy(uploadedBytes = snapshot.uploadedBytes + uploadJob(api, handle, job, profile, telemetrySession))
+                        resourceCount++
+                    } catch (error: ConfigStorageException) {
+                        // The job can already be active before the first progress snapshot is written.
+                        try {
+                            TransferStore.command(handle, "fail_upload", JSONObject().put("job_id", job.getString("job_id"))
+                                .put("error", "本地配置不可用，原任务可在配置恢复后继续").put("retryable", true)
+                                .put("retry_after_ms", JSONObject.NULL))
+                        } catch (queueFailure: Exception) { error.addSuppressed(queueFailure) }
+                        throw error
+                    }
                 }
             }
             // Always consume durable work first. Manual entry never invokes the automatic scanner.
@@ -77,6 +91,7 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
                     publish(config, snapshot, "准备", 0, 0)
                     SelectedMedia.prepare(applicationContext, handle, staging, batchId, item)
                 } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+                catch (error: ConfigStorageException) { throw error }
                 catch (error: Exception) {
                     TransferStore.setItem(handle, batchId, item.getString("id"), "blocked",
                         error.message ?: "需要重新授权访问")
@@ -122,6 +137,8 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
             return if (waiting) Result.retry() else Result.success()
         } catch (error: kotlinx.coroutines.CancellationException) {
             throw error
+        } catch (error: ConfigStorageException) {
+            throw error
         } catch (error: Exception) {
             if (config.profile == profile) config.saveSnapshot(snapshot.copy(state = "waiting",
                 message = error.message ?: "等待网络或系统调度"))
@@ -137,7 +154,9 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
         TransferTelemetry.uploads.resource(profile, telemetrySession, asset)
         fun ensureActive() {
             val currentConfig = SecureConfig(applicationContext)
-            if (isStopped || !currentConfig.isLoggedIn || currentConfig.profile != inputData.getString("profile") ||
+            val connection = currentConfig.connection()
+            if (isStopped || connection.token.isBlank() || connection.authorizationCode.isBlank() ||
+                connection.profile != inputData.getString("profile") ||
                 TransferStore.command(handle, "active", JSONObject().put("job_id", jobId)) != true) {
                 throw kotlinx.coroutines.CancellationException("本次上传已取消或账户已切换")
             }
@@ -195,6 +214,9 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
         } catch (error: UploadSupersededException) {
             TransferStore.command(handle, "supersede", JSONObject().put("job_id", jobId))
             return 0L
+        } catch (error: ConfigStorageException) {
+            // drain preserves the active job and doWork stops with an explicit configuration failure.
+            throw error
         } catch (error: Exception) {
             val policy = uploadFailurePolicy(error)
             TransferStore.command(handle, "fail_upload", JSONObject().put("job_id", jobId)

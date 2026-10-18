@@ -26,19 +26,31 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun AccountDialog(context: Context, config: SecureConfig, onDismiss: () -> Unit, onLoggedIn: () -> Unit) {
+internal fun AccountDialog(context: Context, config: SecureConfig, onDismiss: () -> Unit, onConfigFailure: (String) -> Unit, onLoggedIn: () -> Unit) {
+    val savedRead = readConfiguration { config.savedConnection() }
+    val savedConfiguration = savedRead.getOrNull()
+    if (savedConfiguration == null) {
+        val message = savedRead.exceptionOrNull()?.message ?: "本地凭据不可用"
+        LaunchedEffect(message) { onConfigFailure(message) }
+        ConfigurationUnavailableScreen(message) { (context as? android.app.Activity)?.recreate() }
+        return
+    }
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
-    var server by remember { mutableStateOf(config.serverUrl) }
-    var password by remember { mutableStateOf(config.savedAuthorizationCode) }
+    var server by remember { mutableStateOf(savedConfiguration.server) }
+    var password by remember { mutableStateOf(savedConfiguration.authorizationCode) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     fun login() {
         if (busy || server.isBlank() || password.isBlank()) return
         focus.clearFocus()
         busy = true; error = ""
-        val expected = config.connection()
-        val saved = config.savedConnection()
+        val (expected, saved) = try { config.connection() to config.savedConnection() }
+            catch (failure: ConfigStorageException) {
+                busy = false
+                onConfigFailure(failure.message ?: "无法读取登录凭据")
+                return
+            }
         val address = server.trim().trimEnd('/')
         val code = password.trim()
         scope.launch {
@@ -65,6 +77,7 @@ internal fun AccountDialog(context: Context, config: SecureConfig, onDismiss: ()
                 BackupScheduler.syncAutomatic(context, config)
                 onLoggedIn()
             } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: ConfigStorageException) { onConfigFailure(e.message ?: "无法保存登录凭据") }
             catch (e: Exception) { error = e.message ?: "登录失败，请检查服务器地址和密码" }
             finally { busy = false }
         }

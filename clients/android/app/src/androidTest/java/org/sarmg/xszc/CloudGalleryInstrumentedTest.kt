@@ -1,8 +1,6 @@
 package org.sarmg.xszc
 
 import android.content.Context
-import android.content.ContextWrapper
-import android.content.SharedPreferences
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.Modifier
@@ -36,10 +34,7 @@ internal fun cloudFixture(index: Int): RemoteAsset = RemoteAsset("fixture-$index
 
 internal fun isolatedConfig(context: Context): SecureConfig {
     val prefix = "sync-test-${UUID.randomUUID()}-"
-    return SecureConfig(object : ContextWrapper(context) {
-        override fun getApplicationContext(): Context = this
-        override fun getSharedPreferences(name: String, mode: Int): SharedPreferences = context.getSharedPreferences(prefix + name, mode)
-    })
+    return SecureConfig(context, prefix)
 }
 
 @RunWith(AndroidJUnit4::class)

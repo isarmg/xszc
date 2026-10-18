@@ -3,8 +3,6 @@ package org.sarmg.xszc
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
-import android.content.ContextWrapper
-import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.MediaStore
@@ -309,19 +307,14 @@ class GalleryNavigationInstrumentedTest {
 
     @Test fun logoutPersistsAndKeepsReusableCredentials() {
         val prefix = "account-test-${UUID.randomUUID()}"
-        val isolated = object : ContextWrapper(context) {
-            override fun getApplicationContext(): Context = this
-            override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
-                super.getSharedPreferences("$prefix-$name", mode)
-        }
-        val config = SecureConfig(isolated)
+        val config = SecureConfig(context, prefix)
         config.serverUrl = "https://backup.example.com"
         config.authorizationCode = "test-code"
         config.bearerToken = "test-token"
         config.accountId = "test-account"; config.deviceId = "test-device"
         assertTrue(config.isLoggedIn)
         config.logout()
-        val reopened = SecureConfig(isolated)
+        val reopened = SecureConfig(context, prefix)
         assertFalse(reopened.isLoggedIn)
         assertEquals("", reopened.connection().token)
         assertEquals("", reopened.authorizationCode)

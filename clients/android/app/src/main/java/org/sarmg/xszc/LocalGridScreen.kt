@@ -45,13 +45,19 @@ private data class LocalGalleryQuery(val profile: String, val album: String?, va
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile: String, onSubmitted: () -> Unit, onLogin: () -> Unit) {
+    val connectionRead = readConfiguration { config.connection() }
+    val connection = connectionRead.getOrNull()
+    if (connection == null) {
+        ConfigurationUnavailableScreen(connectionRead.exceptionOrNull()?.message ?: "本地配置不可用") {
+            (context as? android.app.Activity)?.recreate()
+        }
+        return
+    }
     val scope = rememberCoroutineScope()
     var directory by remember(profile) { mutableStateOf(LocalGalleryDirectory()) }
     val details = remember(profile) { LocalGalleryDetails() }
     val gridState = rememberLazyGridState()
-    var selection by remember(profile) { mutableStateOf<Map<String, JSONObject>>(emptyMap()) }
-    var selecting by remember(profile) { mutableStateOf(false) }
-    var selectionGeneration by remember(profile) { mutableIntStateOf(0) }
+    val selectionState = remember(profile) { LocalGallerySelection<JSONObject> { it.getString("source_id") } }
     var entryGeneration by remember(profile) { mutableIntStateOf(0) }
     var previewGeneration by remember(profile) { mutableIntStateOf(0) }
     val galleryPreferences = remember { context.getSharedPreferences("gallery_ui", Context.MODE_PRIVATE) }
@@ -68,21 +74,18 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
     var queuedRefresh by remember { mutableStateOf(false) }
     var queuedScan by remember { mutableStateOf(false) }
     val hasFilters = album != null || kind != null || unbacked
-    val needsPairing = !config.isLoggedIn
+    val needsPairing = connection.token.isBlank() || connection.authorizationCode.isBlank()
     val density = LocalDensity.current.density
     val thumbnailSize = (((LocalConfiguration.current.screenWidthDp - 32) * density / gridColumns / 64).roundToInt() * 64).coerceIn(64, 512)
     fun resetSelection() {
-        selectionGeneration++; entryGeneration++; previewGeneration++
-        selection = emptyMap(); selecting = false
+        selectionState.reset(); entryGeneration++; previewGeneration++
     }
     fun setPreview(row: JSONObject?) {
         if (row == null) previewGeneration++
         preview = row
     }
     fun toggle(row: JSONObject) {
-        selectionGeneration++
-        val id = row.getString("source_id")
-        selection = if (id in selection) selection - id else selection + (id to row)
+        selectionState.toggle(row)
     }
     fun load(scan: Boolean = false) {
         if (busy) { queuedRefresh = true; queuedScan = queuedScan || scan; return }
@@ -113,7 +116,7 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
                     val catalog = withContext(Dispatchers.IO) { LocalCatalog.refresh(context, h, profile) }
                     if (catalog != null) {
                         albums = catalog.albums
-                        selection = selection.filterKeys { it in catalog.sources }
+                        selectionState.values = selectionState.values.filterKeys { it in catalog.sources }
                         LocalThumbnailCache.invalidate(catalog.changes)
                         readDirectory()
                     }
@@ -128,20 +131,21 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
             }
         }
     }
-    fun selectScope(day: String? = null) { if (selecting && !busy && LocalCatalog.hasAccess(context)) scope.launch {
+    fun selectScope(day: String? = null) { if (selectionState.active && !busy && LocalCatalog.hasAccess(context)) scope.launch {
         busy = true
-        val generation = selectionGeneration
+        val generation = selectionState.generation
         val query = LocalGalleryQuery(profile, album, kind, unbacked)
         val entries = if (day == null) directory.entries else directory.days[day].orEmpty()
         try {
-            val chosen = withContext(Dispatchers.IO) {
-                val h = TransferStore.open(context, profile).handle
-                entries.chunked(1000).flatMap { LocalCatalog.items(h, it.map { entry -> entry.id }) }
+            selectionState.selectScope(isCurrentQuery = { query == LocalGalleryQuery(profile, album, kind, unbacked) }) {
+                withContext(Dispatchers.IO) {
+                    val h = TransferStore.open(context, profile).handle
+                    entries.chunked(1000).flatMap { LocalCatalog.items(h, it.map { entry -> entry.id }) }
+                }
             }
-            if (selecting && generation == selectionGeneration && query == LocalGalleryQuery(profile, album, kind, unbacked)) selection = selection + chosen.associateBy { it.getString("source_id") }
         } catch (e: CancellationException) { throw e
         } catch (e: Exception) {
-            if (selecting && generation == selectionGeneration && query == LocalGalleryQuery(profile, album, kind, unbacked)) notice = e.message ?: "选择失败"
+            if (selectionState.active && generation == selectionState.generation && query == LocalGalleryQuery(profile, album, kind, unbacked)) notice = e.message ?: "选择失败"
         } finally {
             busy = false
             if (queuedRefresh) {
@@ -150,11 +154,11 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
             }
         }
     } }
-    fun openEntry(entry: LocalGalleryEntry, select: Boolean = selecting) {
+    fun openEntry(entry: LocalGalleryEntry, select: Boolean = selectionState.active) {
         // Preview taps supersede one another; independent selection taps do not.
         if (!select) previewGeneration++
         // A selection intent owns the UI even while its details are still loading.
-        if (select) selectionGeneration++
+        if (select) selectionState.invalidate()
         val previewRequest = previewGeneration
         val generation = entryGeneration
         val query = LocalGalleryQuery(profile, album, kind, unbacked)
@@ -162,20 +166,20 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
             try {
                 val row = details.resolve(context, profile, entry)
                 if (generation != entryGeneration || query != LocalGalleryQuery(profile, album, kind, unbacked)) return@launch
-                if (select) { selecting = true; toggle(row) }
-                else if (previewRequest == previewGeneration && !selecting) setPreview(row)
+                if (select) { selectionState.active = true; toggle(row) }
+                else if (previewRequest == previewGeneration && !selectionState.active) setPreview(row)
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 if (generation == entryGeneration && query == LocalGalleryQuery(profile, album, kind, unbacked) &&
-                    (select || (previewRequest == previewGeneration && !selecting))) notice = e.message ?: "读取失败"
+                    (select || (previewRequest == previewGeneration && !selectionState.active))) notice = e.message ?: "读取失败"
             }
         }
     }
     fun submitBackup() {
         if (needsPairing) { onLogin(); return }
-        if (selection.isEmpty()) { selecting = true; return }
-        val selectedRows = selection.values.toList()
-        val generation = selectionGeneration
+        if (selectionState.values.isEmpty()) { selectionState.active = true; return }
+        val selectedRows = selectionState.values.values.toList()
+        val generation = selectionState.generation
         busy = true
         scope.launch {
             try {
@@ -184,9 +188,9 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
                     BackupScheduler.enqueueNow(context, config)
                 }
                 // The saved batch still runs, but Cancel/new choices own the current UI.
-                if (generation == selectionGeneration) { resetSelection(); onSubmitted() }
+                if (generation == selectionState.generation) { resetSelection(); onSubmitted() }
             } catch (e: Exception) {
-                if (generation == selectionGeneration) notice = e.message ?: "提交失败"
+                if (generation == selectionState.generation) notice = e.message ?: "提交失败"
             }
             finally {
                 busy = false
@@ -247,7 +251,7 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("共 ${directory.entries.size} 项", Modifier.testTag("gallery.loaded-count"), style = MaterialTheme.typography.titleSmall)
-                    if (selecting) Text("已选 ${selection.size} 项", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (selectionState.active) Text("已选 ${selectionState.values.size} 项", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.weight(1f))
                     if (hasFilters) GalleryInlineButton("清除筛选", onClick = { album = null; kind = null; unbacked = false; load() })
                 }
@@ -268,16 +272,16 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
                 when (item) {
                     is LocalGalleryGridItem.Day -> Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text("${item.day} UTC", Modifier.testTag("gallery.date.${item.day}"), style = MaterialTheme.typography.titleSmall)
-                        if (selecting) GalleryInlineButton("全选", enabled = !busy, onClick = { selectScope(item.day) })
+                        if (selectionState.active) GalleryInlineButton("全选", enabled = !busy, onClick = { selectScope(item.day) })
                     }
                     is LocalGalleryGridItem.Media -> {
                         val entry = item.entry
                         val row = details.rows[entry.id]
-                        val checked = entry.id in selection
+                        val checked = entry.id in selectionState.values
                         val status = row?.optString("backup_state") ?: "unknown"
                         val badge = when (status) { "complete" -> "✓"; "queued", "uploading" -> "↑"; "failed", "original_complete" -> "!"; else -> null }
                         Box(Modifier.fillMaxWidth().testTag("gallery.photo.${entry.id}").aspectRatio(1f)
-                            .combinedClickable(onClick = { openEntry(entry) }, onLongClick = { if (!checked) openEntry(entry, select = true) else selecting = true })
+                            .combinedClickable(onClick = { openEntry(entry) }, onLongClick = { if (!checked) openEntry(entry, select = true) else selectionState.active = true })
                             .semantics { contentDescription = "${if (entry.kind == "video") "视频" else "照片"}，${entry.name}" }) {
                             // Only the image is clipped; corner badges keep their full visible area.
                             LocalMediaImage(context, entry.id, entry.name, entry.kind, entry.modified, false,
@@ -293,7 +297,7 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
                             if (row?.optBoolean("excluded") == true) Text("⊘", Modifier.align(Alignment.TopStart).padding(5.dp)
                                 .background(Color.Black.copy(alpha = 0.6f), CircleShape).padding(horizontal = 7.dp, vertical = 3.dp)
                                 .semantics { contentDescription = "自动备份已排除" }, color = Color.White, style = MaterialTheme.typography.labelSmall)
-                            if (selecting) GallerySelectionButton(checked, { openEntry(entry, select = true) }, Modifier.align(Alignment.TopEnd)
+                            if (selectionState.active) GallerySelectionButton(checked, { openEntry(entry, select = true) }, Modifier.align(Alignment.TopEnd)
                                 .semantics { contentDescription = "选择 ${entry.name}" }, size = if (gridColumns >= 6) 24.dp else 44.dp)
                         }
                     }
@@ -318,10 +322,10 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
             }
             Spacer(Modifier.weight(1f))
             GalleryToolbarButton("备份", onClick = ::submitBackup, enabled = !busy, modifier = Modifier.testTag("gallery.backup"))
-            if (selecting) {
+            if (selectionState.active) {
                 GalleryToolbarButton("全选", onClick = { selectScope() }, enabled = !busy, modifier = Modifier.testTag("gallery.select-all"))
                 GalleryToolbarButton("取消", onClick = { resetSelection() }, modifier = Modifier.testTag("gallery.cancel"))
-            } else GalleryToolbarButton("选择", onClick = { selecting = true }, modifier = Modifier.testTag("gallery.select"))
+            } else GalleryToolbarButton("选择", onClick = { selectionState.active = true }, modifier = Modifier.testTag("gallery.select"))
         }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().align(Alignment.TopCenter)
             .padding(start = 16.dp, end = 16.dp, top = 56.dp).testTag("gallery.loading"))
@@ -330,8 +334,8 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
     preview?.let { row ->
         if (row.getString("media_kind") == "video") FullScreenPhotoDialog(onClose = { setPreview(null) }) {
             LocalVideo(Uri.parse(row.getString("source_id")), Modifier.fillMaxSize(),
-                onClose = { setPreview(null) }, backupSelected = row.getString("source_id") in selection,
-                onBackup = { selecting = true; toggle(row) })
+                onClose = { setPreview(null) }, backupSelected = row.getString("source_id") in selectionState.values,
+                onBackup = { selectionState.active = true; toggle(row) })
         } else {
             var previewMenu by remember(row.getString("source_id")) { mutableStateOf(false) }
             FullScreenPhotoDialog(onClose = { setPreview(null) }) {
@@ -340,8 +344,8 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
                         LocalImage(context, row, true, imageModifier)
                     }
                     DropdownMenu(expanded = previewMenu, onDismissRequest = { previewMenu = false }, shape = AppShapes.group) {
-                        DropdownMenuItem(text = { Text(if (row.getString("source_id") in selection) "取消选择" else "选择备份") }, onClick = {
-                            previewMenu = false; selecting = true; toggle(row); setPreview(null)
+                        DropdownMenuItem(text = { Text(if (row.getString("source_id") in selectionState.values) "取消选择" else "选择备份") }, onClick = {
+                            previewMenu = false; selectionState.active = true; toggle(row); setPreview(null)
                         })
                         DropdownMenuItem(text = { Text(if (row.getBoolean("excluded")) "恢复自动备份" else "不再自动备份此项目") }, onClick = {
                             previewMenu = false

@@ -285,13 +285,11 @@ struct LocalGalleryScreen: View {
     @State private var album: String?
     @State private var kind: String?
     @State private var unbacked = false
-    @State private var selected: [String: LocalMedia] = [:]
-    @State private var selectionGeneration = 0
+    @StateObject private var selection = LocalGallerySelection<LocalMedia>(id: { $0.id })
     @State private var entryGeneration = 0
     @State private var previewGeneration = 0
     @State private var preview: LocalMedia?
     @State private var videoPreview: LocalMedia?
-    @State private var isSelecting = false
     @AppStorage("gallery_grid_columns") private var gridColumns = 3
     @State private var pinchStartColumns: Int?
     @GestureState private var isPinching = false
@@ -314,8 +312,8 @@ struct LocalGalleryScreen: View {
                     Text("共 \(directory.entries.count) 项")
                         .font(.subheadline.weight(.medium))
                         .accessibilityIdentifier("gallery.loaded-count")
-                    if isSelecting {
-                        Text("已选 \(selected.count) 项").font(.caption).foregroundStyle(.secondary)
+                    if selection.active {
+                        Text("已选 \(selection.values.count) 项").font(.caption).foregroundStyle(.secondary)
                             .accessibilityIdentifier("gallery.selected-count")
                     }
                     Spacer(minLength: 8)
@@ -348,8 +346,8 @@ struct LocalGalleryScreen: View {
                                     .accessibilityAddTraits(.isHeader)
                                     .accessibilityIdentifier("gallery.date.\(Int(day.timeIntervalSince1970))")
                                 Spacer()
-                                if isSelecting {
-                                    let allSelected = section.entries.allSatisfy { selected[$0.id] != nil }
+                                if selection.active {
+                                    let allSelected = section.entries.allSatisfy { selection.values[$0.id] != nil }
                                     Button(allSelected ? "取消全选" : "全选") {
                                         Task { await selectScope(day: day, deselect: allSelected) }
                                     }.disabled(busy)
@@ -403,7 +401,7 @@ struct LocalGalleryScreen: View {
             catalogTask?.cancel(); catalogTask = nil
             if busy { photoChanges.requireFullScan() }
             busy = false; queuedRefresh = false; queuedScan = false
-            entryGeneration += 1; selectionGeneration += 1; details.stop()
+            entryGeneration += 1; selection.invalidate(); details.stop()
         }
         .onChange(of: album) { _, _ in filtersChanged(scan: true) }
         .onChange(of: kind) { _, _ in filtersChanged() }
@@ -416,7 +414,7 @@ struct LocalGalleryScreen: View {
                     .accessibilityLabel("照片预览")
                     .accessibilityAction(named: "关闭照片") { setPreview(nil) }
                     .contextMenu {
-                        Button(selected[row.id] == nil ? "选择备份" : "取消选择") { isSelecting = true; toggle(row); setPreview(nil) }
+                        Button(selection.values[row.id] == nil ? "选择备份" : "取消选择") { selection.active = true; toggle(row); setPreview(nil) }
                         Button(row.excluded ? "恢复自动备份" : "不再自动备份此项目") {
                             do { try coordinator.store().gallery(["op": "exclude", "source_id": row.id, "excluded": !row.excluded]); setPreview(nil); Task { await load() } }
                             catch { message = error.localizedDescription }
@@ -429,7 +427,7 @@ struct LocalGalleryScreen: View {
         }
         .fullScreenCover(item: Binding(get: { videoPreview }, set: { setVideoPreview($0) })) { row in
             PhotoKitVideo(id: row.id, onClose: { setVideoPreview(nil) },
-                backupSelected: selected[row.id] != nil, onBackup: { isSelecting = true; toggle(row) })
+                backupSelected: selection.values[row.id] != nil, onBackup: { selection.active = true; toggle(row) })
                 .statusBarHidden()
                 .persistentSystemOverlays(.hidden)
         }
@@ -451,13 +449,13 @@ struct LocalGalleryScreen: View {
             Spacer(minLength: 0)
             Button(action: submitBackup) { Text("备份") }
                 .disabled(busy || coordinator.running).accessibilityIdentifier("gallery.backup")
-            if isSelecting {
+            if selection.active {
                 Button { Task { await selectScope() } } label: { Text("全选") }
                     .disabled(busy).accessibilityIdentifier("gallery.select-all")
                 Button { resetSelection() } label: { Text("取消") }
                     .accessibilityIdentifier("gallery.cancel-selection")
             } else {
-                Button { isSelecting = true } label: { Text("选择") }
+                Button { selection.active = true } label: { Text("选择") }
                     .accessibilityIdentifier("gallery.select")
             }
         }.buttonStyle(.glass).controlSize(.regular)
@@ -474,8 +472,8 @@ struct LocalGalleryScreen: View {
     }
     private func submitBackup() {
         if needsPairing { onLogin(); return }
-        if selected.isEmpty { isSelecting = true; return }
-        let descriptors = selected.values.map(\.descriptor)
+        if selection.values.isEmpty { selection.active = true; return }
+        let descriptors = selection.values.values.map(\.descriptor)
         resetSelection(); onSubmitted()
         Task { await coordinator.enqueueLocal(descriptors) }
     }
@@ -497,7 +495,7 @@ struct LocalGalleryScreen: View {
                         .frame(width: proxy.size.width, height: proxy.size.height).clipped()
                         .contentShape(Rectangle()).onTapGesture { openEntry(entry) }
                         .onLongPressGesture {
-                            if selected[entry.id] == nil { openEntry(entry, select: true) } else { isSelecting = true }
+                            if selection.values[entry.id] == nil { openEntry(entry, select: true) } else { selection.active = true }
                         }
                         .onAppear { if let store = try? coordinator.store() { details.show(entry.id, directory: directory, store: store, pixels: pixels) } }
                         .onDisappear { if let store = try? coordinator.store() { details.hide(entry.id, directory: directory, store: store) } }
@@ -526,9 +524,9 @@ struct LocalGalleryScreen: View {
                 }
             }
             .overlay(alignment: .topTrailing) {
-                if isSelecting {
+                if selection.active {
                     GeometryReader { proxy in
-                        GallerySelectionButton(selected: selected[entry.id] != nil, name: entry.name,
+                        GallerySelectionButton(selected: selection.values[entry.id] != nil, name: entry.name,
                             action: { openEntry(entry, select: true) }, size: min(44, max(24, proxy.size.width * 0.8)))
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     }
@@ -538,9 +536,10 @@ struct LocalGalleryScreen: View {
             .accessibilityIdentifier("media.tile.\(entry.name)")
     }
     private func openEntry(_ entry: LocalGalleryEntry, select: Bool? = nil) {
-        let selecting = select ?? isSelecting
+        let selecting = select ?? selection.active
         // Preview taps supersede one another; independent selection taps do not.
         if !selecting { previewGeneration += 1 }
+        if selecting { selection.invalidate() }
         let previewRequest = previewGeneration
         let identity = coordinator.profile
         let generation = entryGeneration
@@ -550,16 +549,16 @@ struct LocalGalleryScreen: View {
                 let row = try await details.resolve(entry, store: coordinator.store())
                 guard generation == entryGeneration,
                     query == LocalGalleryQuery(profile: coordinator.profile, album: album, kind: kind, unbacked: unbacked) else { return }
-                if selecting { isSelecting = true; toggle(row) }
+                if selecting { selection.active = true; toggle(row) }
                 else {
-                    guard previewRequest == previewGeneration, !isSelecting else { return }
+                    guard previewRequest == previewGeneration, !selection.active else { return }
                     if row.kind == "video" { setVideoPreview(row) }
                     else { setPreview(row) }
                 }
             } catch {
                 guard generation == entryGeneration,
                     query == LocalGalleryQuery(profile: coordinator.profile, album: album, kind: kind, unbacked: unbacked),
-                    selecting || (previewRequest == previewGeneration && !isSelecting) else { return }
+                    selecting || (previewRequest == previewGeneration && !selection.active) else { return }
                 message = error.localizedDescription
             }
         }
@@ -567,20 +566,17 @@ struct LocalGalleryScreen: View {
     private func resetSelection() {
         previewGeneration += 1
         entryGeneration += 1
-        selectionGeneration += 1
-        selected = [:]
-        isSelecting = false
+        selection.reset()
     }
     private func toggle(_ row: LocalMedia) {
-        selectionGeneration += 1
-        if selected.removeValue(forKey: row.id) == nil { selected[row.id] = row }
+        selection.toggle(row)
     }
     private func clearFilters() {
         album = nil; kind = nil; unbacked = false
     }
     private func filtersChanged(scan: Bool = false) {
         entryGeneration += 1
-        selectionGeneration += 1
+        selection.invalidate()
         Task { await load(scan: scan) }
     }
     @MainActor private func finishLoad(generation: Int, profile: String) {
@@ -652,7 +648,7 @@ struct LocalGalleryScreen: View {
                 try await readDirectory()
                 let available = try await Task.detached { try LocalCatalog.index(store: store, album: nil, kind: nil, unbacked: false).positions }.value
                 guard alive(), current() else { return }
-                selected = selected.filter { available[$0.key] != nil }
+                selection.values = selection.values.filter { available[$0.key] != nil }
             }
             guard alive() else { return }
             guard current() else { queuedRefresh = true; return }
@@ -663,28 +659,33 @@ struct LocalGalleryScreen: View {
         } catch { if alive() { photoChanges.requireFullScan(); message = error.localizedDescription } }
     }
     @MainActor private func selectScope(day: Date? = nil, deselect: Bool = false) async {
-        guard isSelecting, !busy else { return }
-        let generation = selectionGeneration
+        guard selection.active, !busy else { return }
+        let generation = selection.generation
         let identity = coordinator.profile
+        let query = LocalGalleryQuery(profile: identity, album: album, kind: kind, unbacked: unbacked)
         let ids = day == nil ? directory.entries.map(\.id) : directory.sections.first { $0.id == day }?.entries.map(\.id) ?? []
-        if deselect { for id in ids { selected.removeValue(forKey: id) }; return }
+        if deselect { for id in ids { selection.values.removeValue(forKey: id) }; return }
         busy = true
         let load = loadGeneration
         defer { finishLoad(generation: load, profile: identity) }
         do {
             let store = try coordinator.store()
-            let chosen = try await Task.detached { () -> [LocalMedia] in
-                var all: [LocalMedia] = []
-                for offset in stride(from: 0, to: ids.count, by: 1000) {
-                    try Task.checkCancellation()
-                    all += try LocalCatalog.items(store: store, ids: Array(ids[offset..<min(ids.count, offset + 1000)]))
-                }
-                return all
-            }.value
-            guard isSelecting, generation == selectionGeneration, identity == coordinator.profile else { return }
-            for row in chosen { selected[row.id] = row }
+            try await selection.selectScope(isCurrentQuery: {
+                query == LocalGalleryQuery(profile: coordinator.profile, album: album, kind: kind, unbacked: unbacked)
+            }) {
+                try await Task.detached { () -> [LocalMedia] in
+                    var all: [LocalMedia] = []
+                    for offset in stride(from: 0, to: ids.count, by: 1000) {
+                        try Task.checkCancellation()
+                        all += try LocalCatalog.items(store: store, ids: Array(ids[offset..<min(ids.count, offset + 1000)]))
+                    }
+                    return all
+                }.value
+            }
+        } catch is CancellationError {
         } catch {
-            if isSelecting, generation == selectionGeneration, identity == coordinator.profile {
+            if selection.active, generation == selection.generation,
+                query == LocalGalleryQuery(profile: coordinator.profile, album: album, kind: kind, unbacked: unbacked) {
                 message = error.localizedDescription
             }
         }

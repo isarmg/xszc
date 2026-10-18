@@ -25,6 +25,17 @@ private data class TransferPreview(val id: String, val name: String, val uri: St
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun TransfersScreen(context: Context, config: SecureConfig, profile: String) {
+    var configFailure by remember { mutableStateOf<String?>(null) }
+    val configRead = readConfiguration { config.settingsSnapshot() }
+    val configSnapshot = configRead.getOrNull()
+    if (configSnapshot == null || configFailure != null) {
+        ConfigurationUnavailableScreen(configFailure ?: configRead.exceptionOrNull()?.message ?: "本地配置不可用") {
+            (context as? android.app.Activity)?.recreate()
+        }
+        return
+    }
+    val connection = configSnapshot.connection
+    val loggedIn = connection.token.isNotBlank() && connection.authorizationCode.isNotBlank()
     val scope = rememberCoroutineScope()
     val downloads by DownloadTransfers.rows.collectAsState()
     val currentDownloads = downloads.filter { it.profile == profile }
@@ -45,7 +56,7 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
     var batchAction by remember(profile) { mutableStateOf<BatchAction?>(null) }
     var cancelledBatchesVisible by remember(profile) { mutableStateOf(false) }
     var clearHistory by remember(profile) { mutableStateOf<String?>(null) }
-    val api = remember(profile) { config.connection().let { if (config.isLoggedIn) BackupApi(it.server, it.token) else null } }
+    val api = remember(profile, connection) { if (loggedIn) BackupApi(connection.server, connection.token) else null }
     suspend fun refresh() {
         val result = withContext(Dispatchers.IO) {
             val handle = TransferStore.open(context, profile).handle
@@ -99,8 +110,11 @@ internal fun TransfersScreen(context: Context, config: SecureConfig, profile: St
                 TransferHeader("上传", uploadProgress(photos, active), TransferRate.formatted(uploadState?.rate?.bytesPerSecond(now) ?: 0.0),
                     uploadsExpanded, "transfers.upload", onLongClick = { uploadMenu = true }) { uploadsExpanded = !uploadsExpanded }
                 DropdownMenu(uploadMenu, { uploadMenu = false }, shape = AppShapes.group) {
-                    DropdownMenuItem(text = { Text("继续上传") }, enabled = config.isLoggedIn && uploadState == null, onClick = {
-                        uploadMenu = false; BackupScheduler.enqueueNow(context, config, automatic = config.autoBackup)
+                    DropdownMenuItem(text = { Text("继续上传") }, enabled = loggedIn && uploadState == null, onClick = {
+                        uploadMenu = false
+                        try { BackupScheduler.enqueueNow(context, config, automatic = configSnapshot.preferences.auto) }
+                        catch (failure: ConfigStorageException) { configFailure = failure.message ?: "本地配置不可用" }
+                        catch (failure: Exception) { notice = failure.message ?: "无法调度上传" }
                     })
                     DropdownMenuItem(text = { Text("已取消批次") }, onClick = {
                         uploadMenu = false; cancelledBatchesVisible = true

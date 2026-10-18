@@ -32,9 +32,25 @@ Worker 重启时从持久状态继续，不能仅依赖 Compose 内存状态。A
 
 ## Android 秘密与权限
 
-服务地址、实例授权码、用户可见设置与 Token 分级保存；授权码和 Token 由 Keystore 支持的加密存储保护。日志、Intent、
-SavedState 和崩溃报告不包含凭据。Android 正式 package/app ID 只使用当前命名空间，不查找旧
-preference、database 或暂存区。
+服务地址、实例授权码、Token、用户设置和备份状态保存为一个 AES-256-GCM 认证加密快照；随机 IV 由平台 Cipher 生成，
+密钥由 Android Keystore 创建并持有，不导出到文件。密文位于应用私有 `noBackupFilesDir/xszc_secure_v1.bin`，
+通过平台 AtomicFile 替换；同步写入、同步磁盘与回读确认完成后才报告保存成功。所有配置实例在同一应用进程内共享事务锁，
+登录凭据、退出状态、整组备份设置及备份快照不会发生部分字段提交；设置页按一份快照读取账户与偏好，避免重复解密和不一致读取。退出后仍保留用于用户再次登录的原凭据，但普通连接不再返回 Token。
+日志、Intent、SavedState 和崩溃报告不包含凭据。
+
+首次只读不会创建密钥。旧 SharedPreferences 文件、损坏或未完成的快照、已有状态仅剩文件或密钥、解密失败均明确报错并保留现状，
+不会回退到空身份、自动换密钥或迁移旧格式。凭据和密钥均缺失但当前实例数据库仍在时也拒绝初始化；首次未配对浏览生成的
+空身份图库索引不属于实例队列。首次保存失败或中断后，若仅留下密钥而没有快照，即使随后存储恢复也不会猜测可以重新初始化，需要保留现场并明确处置。当前开发版本的格式不受支持时，先保留现场和仍需的本地任务数据，再由用户明确新安装并重新配对。
+新安装不代表迁移旧任务，也不撤销远端凭据，不能作为通用排障动作。启动失败显示只读错误页和“重新读取”入口，不自动清除数据；
+导航、本地/云端图库、传输页、登录、退出和设置读取/写入失败也进入该错误页；单纯后台调度故障单独提示，不误报配置损坏。后台 Worker 将配置故障记录为 `failure_kind=local_config` 的失败结果，
+保留原任务并停止按网络故障重试；上传中途发现配置故障会将资源保留为可恢复任务，不标成媒体永久失败。发布快照后的回读失败表示保存结果无法确认，必须重新读取实际状态，不再调用发布前回滚。
+Android 正式 package/app ID 只使用当前命名空间，不探测旧 database 或暂存区。
+
+实现直接使用 [Android Keystore](https://developer.android.com/privacy-and-security/keystore) 与
+[AtomicFile](https://developer.android.com/reference/android/util/AtomicFile)，不再依赖已弃用的 AndroidX Security Crypto。
+`EncryptedConfigStoreTest` 在 JVM 上验证真实 AES-GCM 加解密、篡改拒绝、身份隔离、并发事务和注入写入失败；
+`SecureConfigInstrumentedTest` 在 Android 上验证平台密钥不可导出、重开/退出语义、丢失文件或密钥及旧格式拒绝。
+平台测试随 `connectedDebugAndroidTest` 执行；本地 JVM 测试不能代替 Android Keystore 与 AtomicFile 的设备验证。
 
 正式应用 ID 是 `org.sarmg.xszc`，Kotlin 路径、命名空间、JNI 导出名和 APK badging 必须
 同时一致。Debug APK 只用于 CI/开发，永远不取得正式秘密；Release 使用受保护 Environment 中两个

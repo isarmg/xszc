@@ -42,11 +42,12 @@ internal interface CloudGallerySource {
     suspend fun synchronize(): Boolean = false
 }
 
-private class AccountCloudGallerySource(val context: Context, val config: SecureConfig, val profile: String) : CloudGallerySource {
-    private val credentials = config.connection()
+private class AccountCloudGallerySource(val context: Context, val config: SecureConfig, val profile: String,
+    private val credentials: SecureConfig.Connection) : CloudGallerySource {
     override val api = BackupApi(credentials.server, credentials.token)
     override suspend fun page(cursor: String?, trash: Boolean, favorite: Boolean, album: String?, filters: CloudFilters) = withContext(Dispatchers.IO) {
-        check(config.isLoggedIn && config.connection() == credentials) { "账户已退出或切换" }
+        val current = config.connection()
+        check(current.token.isNotBlank() && current.authorizationCode.isNotBlank() && current == credentials) { "账户已退出或切换" }
         val handle = TransferStore.open(context, profile).handle
         TransferStore.command(handle, "bind", org.json.JSONObject().put("server", credentials.server)
             .put("account_id", credentials.accountId).put("device_id", credentials.deviceId))
@@ -82,7 +83,18 @@ private fun pickerDate(boundary: Long?, exclusiveEnd: Boolean = false): Long? = 
 internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile: String,
     sourceOverride: CloudGallerySource? = null, onDownload: ((List<RemoteAsset>) -> Unit)? = null) {
     val scope = rememberCoroutineScope()
-    val source = remember(profile, sourceOverride) { sourceOverride ?: AccountCloudGallerySource(context, config, profile) }
+    var configFailure by remember { mutableStateOf<String?>(null) }
+    val connectionRead = if (sourceOverride == null) readConfiguration { config.connection() } else null
+    if (configFailure != null || connectionRead?.isFailure == true) {
+        ConfigurationUnavailableScreen(configFailure ?: connectionRead?.exceptionOrNull()?.message ?: "本地配置不可用") {
+            (context as? android.app.Activity)?.recreate()
+        }
+        return
+    }
+    val credentials = connectionRead?.getOrNull()
+    val source = remember(profile, sourceOverride, credentials) {
+        sourceOverride ?: AccountCloudGallerySource(context, config, profile, checkNotNull(credentials))
+    }
     val api = source.api
     var assets by remember(profile) { mutableStateOf<List<RemoteAsset>>(emptyList()) }
     var cursor by remember(profile) { mutableStateOf<String?>(null) }
@@ -192,9 +204,13 @@ internal fun CloudGalleryScreen(context: Context, config: SecureConfig, profile:
         }
     }
     fun enqueue(values: List<RemoteAsset>) {
-        val added = if (onDownload != null) { onDownload(values); values.distinctBy { it.id }.size }
-            else DownloadQueue.enqueue(context, config, values)
-        if (added > 0) downloadNotice = "已加入下载：$added 项"
+        try {
+            val added = if (onDownload != null) { onDownload(values); values.distinctBy { it.id }.size }
+                else DownloadQueue.enqueue(context, config, values)
+            if (added > 0) downloadNotice = "已加入下载：$added 项"
+        } catch (failure: ConfigStorageException) { configFailure = failure.message ?: "本地配置不可用" }
+        catch (failure: CancellationException) { throw failure }
+        catch (failure: Exception) { downloadNotice = failure.message ?: "下载入队失败" }
     }
     fun download(values: List<RemoteAsset>) {
         if (values.isEmpty()) return

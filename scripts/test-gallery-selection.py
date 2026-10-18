@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Source-level selection interleaving regressions, without a mobile SDK.
+"""Independent source guards for gallery privacy, lifecycle and UI test setup.
 
-Evaluate the production completion predicates against deterministic deferred-read
-scenarios. This verifies the guard/reset contract, not Kotlin/Swift compilation,
-Compose/SwiftUI rendering, or PhotoKit/MediaStore behavior.
+Selection interleavings execute the production Kotlin/Swift selection state in
+LocalGallerySelectionTest and LocalGallerySelectionTests on their real runtimes.
 """
 import argparse
 from pathlib import Path
@@ -30,302 +29,36 @@ def block(source, marker):
     raise AssertionError(f'Unclosed function: {marker}')
 
 
-class SourceContract:
-    def __init__(self, platform):
-        self.platform = platform
-        self.source = (ANDROID if platform == 'android' else IOS).read_text()
-        self.open = block(self.source, 'fun openEntry' if platform == 'android' else 'func openEntry')
-        self.bulk = block(self.source, 'fun selectScope' if platform == 'android' else 'func selectScope')
-        marker = 'fun resetSelection' if platform == 'android' else 'func resetSelection'
-        self.reset = block(self.source, marker) if marker in self.source else ''
-        self.toggle = block(self.source, 'fun toggle' if platform == 'android' else 'func toggle')
-
-    def allows(self, kind, *, reset=False, reenter=False, filter_changed=False, toggle=False, pending=False):
-        # All reads start with selection active and the default query. Suspend at
-        # the detail-read await, apply a user event, then evaluate its real guard.
-        epoch = 'selectionGeneration' if kind == 'bulk' else 'entryGeneration'
-        generation = 0
-        current = int(reset and epoch in self.reset) + int(toggle and epoch in self.toggle)
-        current += int(pending and epoch == 'selectionGeneration' and
-                       'if (select) selectionGeneration++' in self.open[:self.open.index('details.resolve')])
-        body = self.bulk if kind == 'bulk' else self.open
-        local_query = ('profile', None, None, False)
-        namespace = dict(generation=generation, selectionGeneration=current,
-                         entryGeneration=current, selecting=not reset or reenter,
-                         isSelecting=not reset or reenter, query=local_query,
-                         profile='profile', identity='profile', album=None,
-                         kind='video' if filter_changed else None, unbacked=False,
-                         LocalGalleryQuery=lambda *a, **k: tuple(a) if a else tuple(k.values()))
-        if self.platform == 'android':
-            if kind == 'bulk':
-                predicate = re.search(r'if \(([^\n]+)\) selection = selection \+ chosen', body).group(1)
-                rejected = False
-            else:
-                match = re.search(r'if \(([^\n]+)\) return@launch', body)
-                if not match:
-                    return True
-                predicate = match.group(1)
-                rejected = True
-            predicate = predicate.replace('&&', ' and ').replace('||', ' or ')
-        else:
-            if kind == 'bulk':
-                # Skip the pre-read guard; select the guard after detached work.
-                predicate = re.findall(r'guard (.*?) else \{ return \}', body, re.S)[-1]
-            else:
-                predicate = re.search(r'guard (.*?) else \{ return \}', body, re.S).group(1)
-            predicate = predicate.replace('coordinator.profile', 'profile')
-            predicate = re.sub(r'LocalGalleryQuery\(profile: (.*?), album: (.*?), kind: (.*?), unbacked: (.*?)\)',
-                               r'LocalGalleryQuery(\1, \2, \3, \4)', predicate)
-            # Swift guard commas are AND, while constructor commas separate args.
-            depth = 0
-            translated = []
-            for char in predicate:
-                if char == '(':
-                    depth += 1
-                elif char == ')':
-                    depth -= 1
-                translated.append(' and ' if char == ',' and depth == 0 else char)
-            predicate = ' '.join(''.join(translated).split())
-            rejected = False
-        result = bool(eval(predicate, {'__builtins__': {}}, namespace))
-        return not result if rejected else result
-
-
-    def allows_submission(self, *, reset=False, toggle=False, pending=False, failure=False):
-        body = block(self.source, 'fun submitBackup')
-        self_generation = int(reset and 'selectionGeneration++' in self.reset)
-        self_generation += int(toggle and 'selectionGeneration++' in self.toggle)
-        self_generation += int(pending and 'if (select) selectionGeneration++' in
-                               self.open[:self.open.index('details.resolve')])
-        assert 'val generation = selectionGeneration' in body[:body.index('withContext')]
-        completion = body[body.index('BackupScheduler.enqueueNow'):body.index('} catch')]
-        if failure:
-            predicate = re.search(r'if \(([^\n]+)\) notice = e.message', body).group(1)
-        else:
-            predicate = re.search(r'if \(([^\n]+)\) \{ resetSelection\(\); onSubmitted\(\)', completion).group(1)
-            # Scheduling A must remain outside the stale-UI guard.
-            assert completion.index('BackupScheduler.enqueueNow') < completion.index('if (')
-        return bool(eval(predicate, {'__builtins__': {}}, dict(
-            generation=0, selectionGeneration=self_generation)))
-
-    def allows_preview(self, request, current, selecting=False):
-        if self.platform == 'android':
-            match = re.search(r'else if \((previewRequest == [^\n]+)\) setPreview\(row\)', self.open)
-            predicate = match.group(1).replace('&&', ' and ').replace('!selecting', 'not selecting') if match else 'True'
-        else:
-            match = re.search(r'guard (previewRequest == .*?) else \{ return \}', self.open)
-            predicate = match.group(1).replace(', ', ' and ').replace('!isSelecting', 'not selecting') if match else 'True'
-        return bool(eval(predicate, {'__builtins__': {}}, dict(
-            previewRequest=request, previewGeneration=current, selecting=selecting)))
-
-
-    def allows_failure(self, kind, *, reset=False, filter_changed=False, older_preview=False, select=False):
-        body = self.bulk if kind == 'bulk' else self.open
-        if self.platform == 'android':
-            failure = block(body, 'catch (e: Exception)')
-            match = re.search(r'if \((.*?)\) notice =', failure, re.S)
-        else:
-            failure = block(body, '} catch {')
-            match = (re.search(r'if (.*?) \{\s*message =', failure, re.S) if kind == 'bulk'
-                     else re.search(r'guard (.*?) else \{ return \}', failure, re.S))
-        if not match:
-            return True
-        predicate = match.group(1).replace('coordinator.profile', 'profile')
-        predicate = re.sub(r'LocalGalleryQuery\(profile: (.*?), album: (.*?), kind: (.*?), unbacked: (.*?)\)',
-                           r'LocalGalleryQuery(\1, \2, \3, \4)', predicate)
-        if self.platform == 'ios':
-            depth = 0
-            translated = []
-            for char in predicate:
-                if char == '(':
-                    depth += 1
-                elif char == ')':
-                    depth -= 1
-                translated.append(') and (' if char == ',' and depth == 0 else char)
-            predicate = '(' + ''.join(translated) + ')'
-        predicate = ' '.join(predicate.replace('&&', ' and ').replace('||', ' or ')
-                             .replace('!isSelecting', 'not isSelecting').replace('!selecting', 'not selecting').split())
-        namespace = dict(generation=0, selectionGeneration=int(reset), entryGeneration=int(reset),
-                         query=('profile', None, None, False), profile='profile', identity='profile',
-                         album=None, kind='video' if filter_changed else None, unbacked=False,
-                         selecting=(select if self.platform == 'ios' and kind == 'entry' else not reset),
-                         isSelecting=not reset if kind == 'bulk' or select else False, select=select,
-                         previewRequest=1, previewGeneration=2 if older_preview else 1,
-                         LocalGalleryQuery=lambda *a: tuple(a))
-        if self.platform == 'android' and kind == 'entry':
-            namespace['selecting'] = select and not reset
-        return bool(eval(predicate, {'__builtins__': {}}, namespace))
-
-
-class SelectionRegressionTests(unittest.TestCase):
-    def test_android_bulk_cancel_does_not_repopulate_hidden_selection(self):
-        self.assertFalse(SourceContract('android').allows('bulk', reset=True))
-
-    def test_android_bulk_cancel_then_reenter_does_not_restore_old_selection(self):
-        self.assertFalse(SourceContract('android').allows('bulk', reset=True, reenter=True))
-
-    def test_android_bulk_new_individual_choice_wins(self):
-        self.assertFalse(SourceContract('android').allows('bulk', toggle=True))
-
-    def test_bulk_unchanged_selection_and_filters_continue(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertTrue(SourceContract(platform).allows('bulk'))
-
-    def test_entry_cancel_does_not_reenter_selection(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertFalse(SourceContract(platform).allows('entry', reset=True))
-
-    def test_entry_cancel_then_reenter_rejects_old_read(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertFalse(SourceContract(platform).allows('entry', reset=True, reenter=True))
-
-    def test_entry_filter_change_rejects_old_read(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertFalse(SourceContract(platform).allows('entry', filter_changed=True))
-
-    def test_entry_normal_and_parallel_individual_choices_continue(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                contract = SourceContract(platform)
-                self.assertTrue(contract.allows('entry'))
-                self.assertTrue(contract.allows('entry', toggle=True))
-
-    def test_preview_b_wins_when_a_completes_later(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                contract = SourceContract(platform)
-                self.assertTrue(contract.allows_preview(request=2, current=2))
-                self.assertFalse(contract.allows_preview(request=1, current=2))
-
-    def test_preview_a_cannot_flash_after_b_was_requested(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertFalse(SourceContract(platform).allows_preview(request=1, current=2))
-
-    def test_close_prevents_deferred_preview_from_reopening(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                contract = SourceContract(platform)
-                marker = 'fun setPreview' if platform == 'android' else 'func setPreview'
-                self.assertTrue(marker in contract.source, 'Preview close must invalidate requests')
-                close = block(contract.source, marker)
-                self.assertTrue('previewGeneration' in close)
-                self.assertFalse(contract.allows_preview(request=2, current=3))
-                if platform == 'ios':
-                    self.assertTrue('previewGeneration' in block(contract.source, 'func setVideoPreview'))
-                    self.assertTrue('set: { setVideoPreview($0) }' in contract.source)
-
-    def test_entering_selection_prevents_deferred_preview_from_opening(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertFalse(SourceContract(platform).allows_preview(request=1, current=1, selecting=True))
-
+class SelectionWiringTests(unittest.TestCase):
     def test_only_preview_requests_advance_preview_request_generation(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                contract = SourceContract(platform)
-                increment = 'if (!select) previewGeneration++' if platform == 'android' else 'if !selecting { previewGeneration += 1 }'
-                self.assertTrue(increment in contract.open)
-                self.assertTrue('previewGeneration' not in contract.toggle)
-                self.assertTrue(contract.open.index(increment) < contract.open.index('details.resolve'))
-
-    def test_canceled_bulk_failure_is_not_displayed(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertFalse(SourceContract(platform).allows_failure('bulk', reset=True))
-
-    def test_canceled_entry_failure_is_not_displayed(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertFalse(SourceContract(platform).allows_failure('entry', reset=True, select=True))
-
-    def test_old_filter_entry_failure_is_not_displayed(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertFalse(SourceContract(platform).allows_failure('entry', filter_changed=True, select=True))
-
-    def test_superseded_preview_failure_is_not_displayed(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                self.assertFalse(SourceContract(platform).allows_failure('entry', older_preview=True))
-
-    def test_current_failures_remain_visible(self):
-        for platform in ['android', 'ios']:
-            with self.subTest(platform=platform):
-                contract = SourceContract(platform)
-                self.assertTrue(contract.allows_failure('bulk'))
-                self.assertTrue(contract.allows_failure('entry', select=True))
-                self.assertTrue(contract.allows_failure('entry'))
+        for path, marker, increment in (
+            (ANDROID, 'fun openEntry', 'if (!select) previewGeneration++'),
+            (IOS, 'func openEntry', 'if !selecting { previewGeneration += 1 }'),
+        ):
+            with self.subTest(platform=path):
+                source = path.read_text()
+                opened = block(source, marker)
+                self.assertIn(increment, opened)
+                self.assertLess(opened.index(increment), opened.index('details.resolve'))
+                self.assertNotIn('previewGeneration', block(source, 'fun toggle' if path == ANDROID else 'func toggle'))
 
     def test_android_submission_schedules_before_leaving_io(self):
-        # Source wiring only. Real coroutine dispatcher cancellation is covered by
-        # the separate Kotlin extraction probe; this is not a WorkManager test.
-        body = block(SourceContract('android').source, 'fun submitBackup')
+        body = block(ANDROID.read_text(), 'fun submitBackup')
         io = block(body, 'withContext(Dispatchers.IO)')
         self.assertLess(io.index('LocalCatalog.persist'), io.index('BackupScheduler.enqueueNow'))
         self.assertEqual(body.count('BackupScheduler.enqueueNow'), 1)
         self.assertNotIn('resetSelection()', io)
         self.assertNotIn('onSubmitted()', io)
 
-    def test_android_submission_preserves_new_selection(self):
-        contract = SourceContract('android')
-        self.assertFalse(contract.allows_submission(reset=True, toggle=True))
-        self.assertFalse(contract.allows_submission(toggle=True))
-
-    def test_android_submission_finishes_before_cold_selection_resolves(self):
-        contract = SourceContract('android')
-        reset_by_submission = contract.allows_submission(pending=True)
-        self.assertFalse(reset_by_submission)
-        # B resumes after A. A must not reset entryGeneration and discard B.
-        self.assertTrue(contract.allows('entry', reset=reset_by_submission))
-
-    def test_android_submission_finishes_before_cold_selection_fails(self):
-        contract = SourceContract('android')
-        reset_by_submission = contract.allows_submission(pending=True)
-        self.assertFalse(reset_by_submission)
-        self.assertTrue(contract.allows_failure('entry', reset=reset_by_submission, select=True))
-        self.assertFalse(contract.allows_submission(pending=True, failure=True))
-
-    def test_android_pending_individual_intent_fences_bulk_completion(self):
-        self.assertFalse(SourceContract('android').allows('bulk', pending=True))
-
-    def test_android_pending_individual_intent_keeps_independent_reads(self):
-        contract = SourceContract('android')
-        self.assertNotIn('entryGeneration++', contract.open[:contract.open.index('details.resolve')])
-        self.assertTrue(contract.allows('entry', pending=True))
-        self.assertTrue(contract.allows('entry', pending=True, toggle=True))
-
-    def test_android_submission_respects_cancel_without_reselection(self):
-        self.assertFalse(SourceContract('android').allows_submission(reset=True))
-
-    def test_android_unchanged_submission_still_navigates(self):
-        self.assertTrue(SourceContract('android').allows_submission())
-
-    def test_android_old_submission_error_does_not_replace_new_selection_notice(self):
-        contract = SourceContract('android')
-        self.assertFalse(contract.allows_submission(reset=True, toggle=True, failure=True))
-        self.assertFalse(contract.allows_submission(reset=True, failure=True))
-
-    def test_android_current_submission_error_still_allows_retry(self):
-        contract = SourceContract('android')
-        self.assertTrue(contract.allows_submission(failure=True))
-        body = block(contract.source, 'fun submitBackup')
-        failure = body[body.index('} catch'):body.index('finally')]
-        self.assertNotIn('resetSelection', failure)
-        self.assertIn('busy = false', body[body.index('finally'):])
-
     def test_android_cancel_and_submission_use_reset(self):
-        source = SourceContract('android').source
-        self.assertTrue('onClick = { resetSelection() }, modifier = Modifier.testTag("gallery.cancel")' in source, 'Cancel must invalidate pending selection')
-        self.assertTrue('resetSelection(); onSubmitted()' in source, 'Successful submission must reset pending selection')
+        source = ANDROID.read_text()
+        self.assertIn('onClick = { resetSelection() }, modifier = Modifier.testTag("gallery.cancel")', source)
+        self.assertIn('resetSelection(); onSubmitted()', source)
 
     def test_ios_navigation_and_filter_changes_invalidate_pending_entries(self):
-        source = SourceContract('ios').source
-        self.assertIn('entryGeneration += 1; selectionGeneration += 1; details.stop()', block(source, '.onDisappear {\n            isVisible'), 'Leaving the gallery must invalidate pending reads')
+        source = IOS.read_text()
+        leaving = block(source, '.onDisappear {\n            isVisible')
+        self.assertIn('entryGeneration += 1; selection.invalidate(); details.stop()', leaving)
         self.assertIn('entryGeneration += 1', block(source, 'func filtersChanged'))
 
 

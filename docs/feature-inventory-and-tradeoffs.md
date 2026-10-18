@@ -12,7 +12,7 @@
 | 原件下载与校验 | 云端下载、传输 | 平台下载队列、Rust size/BLAKE3 校验、系统照片库 |
 | 全屏视频 | 本地或云端预览 | Android Media3 / iOS AVPlayer，分段 HTTPS 读取 |
 | 照片授权与后台调度 | 设置、系统权限 | Android WorkManager / iOS PhotoKit、BGProcessingTask |
-| 私有凭据 | 账户登录 | Android Keystore 加密偏好 / iOS Keychain |
+| 私有凭据 | 账户登录 | Android Keystore + AES-GCM 原子配置快照 / iOS Keychain |
 | 构建和发行 | 开发工具 | Rust/C/JNI、Gradle、Xcode、APK 签名、IPA 打包 |
 
 ## 取舍

@@ -210,6 +210,12 @@ final class NavigationTests: XCTestCase {
         XCTAssertTrue(pairing.isHittable)
         screenshot("local-gallery-selected")
         selection.tap()
+        XCTAssertTrue(app.staticTexts["已选 0 项"].waitForExistence(timeout: 5))
+        let loadedCount = app.staticTexts["gallery.loaded-count"].label
+            .split(separator: " ").dropFirst().first.flatMap { Int($0) } ?? 0
+        XCTAssertGreaterThan(loadedCount, 0)
+        app.buttons["gallery.select-all"].tap()
+        XCTAssertTrue(app.staticTexts["已选 \(loadedCount) 项"].waitForExistence(timeout: 30), app.debugDescription)
         app.buttons["gallery.cancel-selection"].tap()
         screenshot("local-gallery")
         pairing.tap()

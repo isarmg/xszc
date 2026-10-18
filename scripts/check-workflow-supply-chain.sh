@@ -32,6 +32,7 @@ job_permissions_seen=0
 job_permission_count=0
 job_permission_name=""
 job_permission_level=""
+job_actions_read=0
 inside_jobs=false
 inside_permissions=false
 
@@ -57,9 +58,14 @@ finish_job() {
   ((job_permissions_seen == 1)) ||
     fail "$current_file: job '$current_job' must define one job-level permissions map"
   ((job_permission_count == 1)) ||
-    fail "$current_file: job '$current_job' must grant only the contents permission"
+    fail "$current_file: job '$current_job' requires exactly one contents entry besides any reviewed actions: read"
   [[ "$job_permission_name" == "contents" ]] ||
     fail "$current_file: job '$current_job' grants unexpected '$job_permission_name' permission"
+  if [[ "$current_file" == ".github/workflows/release.yml" && "$current_job" == "validate" ]]; then
+    ((job_actions_read == 1)) || fail "release validation requires actions: read for exact-commit CI checks"
+  else
+    ((job_actions_read == 0)) || fail "$current_file: job '$current_job' must not grant Actions permissions"
+  fi
 
   if [[ "$current_file" == ".github/workflows/release.yml" && "$current_job" == "publish" ]]; then
     [[ "$job_permission_level" == "write" ]] ||
@@ -102,6 +108,7 @@ for current_file in "${workflow_files[@]}"; do
       job_permission_count=0
       job_permission_name=""
       job_permission_level=""
+      job_actions_read=0
       inside_permissions=false
       continue
     fi
@@ -124,6 +131,11 @@ for current_file in "${workflow_files[@]}"; do
 
     if [[ "$inside_permissions" == true ]]; then
       if [[ "$line" =~ ^\ \ \ \ \ \ ([a-z-]+):[[:space:]]*(read|write|none)([[:space:]]*#.*)?$ ]]; then
+        if [[ "${BASH_REMATCH[1]}" == "actions" ]]; then
+          [[ "${BASH_REMATCH[2]}" == "read" ]] || fail "Actions permission must be read-only"
+          ((++job_actions_read))
+          continue
+        fi
         ((++job_permission_count))
         job_permission_name="${BASH_REMATCH[1]}"
         job_permission_level="${BASH_REMATCH[2]}"
