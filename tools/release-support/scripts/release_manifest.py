@@ -15,7 +15,7 @@ import release_sbom
 
 MANIFEST = 'share/package.json'
 CHECKSUM = 'share/package.sha256'
-PRODUCTS = {'xsoc', 'xscc', 'xcoc', 'xszc', 'xssc', 'xssi', 'taken-my'}
+PRODUCT = 'ana'
 
 
 def bounded(path, maximum):
@@ -34,7 +34,7 @@ def physical_stage(stage):
 
 
 def identity(product, version, revision, target):
-    if product not in PRODUCTS or not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.(0|[1-9][0-9]*))?', version) or not re.fullmatch('[0-9a-f]{40}', revision):
+    if product != PRODUCT or not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-rc\.(0|[1-9][0-9]*))?', version) or not re.fullmatch('[0-9a-f]{40}', revision):
         raise ValueError('client release identity is invalid')
     release_sbom.text(target, 128)
     if not re.fullmatch('[A-Za-z0-9_-]+', target):

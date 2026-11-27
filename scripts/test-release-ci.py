@@ -2,6 +2,7 @@
 import copy
 import importlib.util
 from pathlib import Path
+import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,6 +88,15 @@ class ReleaseCITests(unittest.TestCase):
         self.assertIn('needs: validate', release.split('\n  ios:', 1)[1].split('\n  publish:', 1)[0])
         self.assertEqual(release.count('ref: ${{ github.sha }}'), 4)
         self.assertNotIn('ref: ${{ env.RELEASE_TAG }}', release)
+
+    def test_release_manifest_accepts_the_product_identity(self):
+        path = ROOT / 'tools/release-support/scripts/release_manifest.py'
+        spec = importlib.util.spec_from_file_location('delivery_manifest', path)
+        manifest = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(manifest)
+        product = tomllib.loads((ROOT / 'xcsc-client.toml').read_text())['product_id']
+        version = tomllib.loads((ROOT / 'Cargo.toml').read_text())['workspace']['package']['version']
+        self.assertEqual(manifest.identity(product, version, SHA, 'aarch64-apple-ios')['product'], product)
 
 
 if __name__ == '__main__':

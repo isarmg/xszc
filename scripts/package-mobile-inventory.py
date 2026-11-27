@@ -56,9 +56,9 @@ def bindings(path,platform):
 def package(artifacts,output,platform,gradle_export=None):
     module=common();environment=module.clean_environment()
     profile=tomllib.loads((ROOT/'xcsc-client.toml').read_text());product=profile['product_id']
-    if product not in ('xcoc','ana'):raise ValueError('unknown mobile product')
+    if product != 'ana':raise ValueError('unknown mobile product')
     manifest=tomllib.loads((ROOT/'Cargo.toml').read_text())
-    version=manifest['package']['version'] if product=='xcoc' else manifest['workspace']['package']['version']
+    version=manifest['workspace']['package']['version']
     revision=module.run(['git','rev-parse','HEAD'],ROOT,environment)
     target={'android':'aarch64-linux-android','ios-device':'aarch64-apple-ios',
             'ios-simulator':'aarch64-apple-ios-sim'}[platform]
