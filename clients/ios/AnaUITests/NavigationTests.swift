@@ -469,7 +469,8 @@ final class NavigationTests: XCTestCase {
         guard alert.exists else { return false }
         let text = alert.label
         let refersToPhotos = text.lowercased().contains("photo") || text.contains("照片") || text.contains("图库")
-        guard text.contains("媒体备份"), refersToPhotos else { return false }
+        let namesAna = text.range(of: #"\bana\b"#, options: [.caseInsensitive, .regularExpression]) != nil
+        guard namesAna, refersToPhotos else { return false }
         let allow = alert.buttons.matching(NSPredicate(format: "label == %@ OR label == %@", "允许完全访问", "Allow Full Access")).firstMatch
         guard allow.exists else { return false }
         allow.tap()

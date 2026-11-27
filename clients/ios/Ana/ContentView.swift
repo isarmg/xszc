@@ -105,7 +105,8 @@ struct ContentView: View {
     @MainActor private func openPhotoAccessSettings() async {
         guard let settings = URL(string: UIApplication.openSettingsURLString),
             await UIApplication.shared.open(settings) else {
-            coordinator.status = "无法打开系统设置，请在“设置 → 应用 → 媒体备份 → 照片”中调整访问权限"
+            let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "ana"
+            coordinator.status = "无法打开系统设置，请在“设置 → 应用 → \(name) → 照片”中调整访问权限"
             return
         }
     }
