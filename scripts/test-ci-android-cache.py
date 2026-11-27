@@ -13,9 +13,9 @@ EMULATOR = (ROOT / 'scripts/test-android-emulator.sh').read_text()
 class CompilationCacheTests(unittest.TestCase):
     def test_cache_policy_is_opt_in_and_compilation_only(self):
         # Keep the entire small policy gated; no changes to ordinary/release builds.
-        policy = APP[APP.index('if (providers.gradleProperty("xszcCiCompilationCache")'):]
+        policy = APP[APP.index('if (providers.gradleProperty("anaCiCompilationCache")'):]
         self.assertTrue(policy.startswith(
-            'if (providers.gradleProperty("xszcCiCompilationCache").orNull == "true") {'))
+            'if (providers.gradleProperty("anaCiCompilationCache").orNull == "true") {'))
         self.assertEqual(policy.count('{'), policy.count('}'))
         allowlist = policy.split('val cachedCompilationTasks = setOf(', 1)[1].split(')', 1)[0]
         self.assertEqual(set(re.findall(r'"([^"]+)"', allowlist)), {
@@ -39,16 +39,16 @@ class CompilationCacheTests(unittest.TestCase):
 
     def test_only_unit_assemble_invocation_opts_in(self):
         self.assertIn('run: gradle -p clients/android --build-cache '
-                      '-PxszcCiCompilationCache=true testDebugUnitTest '
+                      '-PanaCiCompilationCache=true testDebugUnitTest '
                       'assembleDebug assembleDebugAndroidTest', WORKFLOW)
         self.assertEqual(WORKFLOW.count('--build-cache'), 1)
-        self.assertEqual(WORKFLOW.count('-PxszcCiCompilationCache=true'), 1)
+        self.assertEqual(WORKFLOW.count('-PanaCiCompilationCache=true'), 1)
         self.assertIn('cache-provider: basic', WORKFLOW)
         for path in [ROOT / 'clients/android/gradle.properties',
                      ROOT / '.github/workflows/release.yml']:
             source = path.read_text()
             self.assertNotIn('org.gradle.caching', source)
-            self.assertNotIn('xszcCiCompilationCache', source)
+            self.assertNotIn('anaCiCompilationCache', source)
         self.assertIn('run: python3 scripts/test-ci-android-cache.py',
                       WORKFLOW.split('\n  android:', 1)[0])
 
@@ -59,8 +59,8 @@ class CompilationCacheTests(unittest.TestCase):
         self.assertIn('scripts/check-android-runtime-inventory.py --export', audit)
         for source in [audit, EMULATOR]:
             self.assertNotIn('--build-cache', source)
-            self.assertNotIn('xszcCiCompilationCache', source)
-        self.assertIn('gradle -p clients/android -PxszcEmulatorTests=true '
+            self.assertNotIn('anaCiCompilationCache', source)
+        self.assertIn('gradle -p clients/android -PanaEmulatorTests=true '
                       'connectedDebugAndroidTest\n', EMULATOR)
         self.assertNotIn('android.testInstrumentationRunnerArguments', EMULATOR)
         self.assertIn('run: bash scripts/test-android-emulator.sh', WORKFLOW)
@@ -69,8 +69,8 @@ class CompilationCacheTests(unittest.TestCase):
         self.assertGreaterEqual(methods, 58)
 
     def test_arm64_apk_is_uploaded_before_x86_native_rebuild(self):
-        markers = ['cargo ndk -t arm64-v8a', '--build-cache -PxszcCiCompilationCache=true',
-                   'name: xszc-android-debug', 'cargo ndk -t x86_64',
+        markers = ['cargo ndk -t arm64-v8a', '--build-cache -PanaCiCompilationCache=true',
+                   'name: ana-android-debug', 'cargo ndk -t x86_64',
                    'run: bash scripts/test-android-emulator.sh']
         positions = [WORKFLOW.index(marker) for marker in markers]
         self.assertEqual(positions, sorted(positions))

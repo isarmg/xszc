@@ -1,6 +1,6 @@
 # 一次移动请求
 
-本章跟踪客户端发出的请求。服务端路由和认证实现位于 [xszs](https://github.com/isarmg/xszs/tree/main/docs)。
+本章跟踪客户端发出的请求。服务端路由和认证实现位于 [ana-server](https://github.com/isarmg/xszs/tree/main/docs)。
 
 1. 宿主读取当前连接快照，确认 HTTPS 根地址与账户/设备身份。
 2. 使用设备 Bearer Token 发起同源请求；资源和视频请求保持同一来源。

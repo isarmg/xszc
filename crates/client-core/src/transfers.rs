@@ -1,6 +1,9 @@
 use super::*;
 use serde_json::{json, Value};
 
+const PROFILE_BINDING_QUERY: &str =
+    "SELECT server,account_id,device_id FROM profile_binding WHERE singleton=1";
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TransferRequest {
@@ -119,7 +122,7 @@ impl Client {
             TransferCommand::Binding {} => {
                 let binding: Option<(String, String, String)> = tx
                     .query_row(
-                        "SELECT server,account_id,device_id FROM profile_binding WHERE singleton=1",
+                        PROFILE_BINDING_QUERY,
                         params![],
                         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                     )
@@ -142,19 +145,26 @@ impl Client {
                 }
                 let existing: Option<(String, String, String)> = tx
                     .query_row(
-                        "SELECT server,account_id,device_id FROM profile_binding WHERE singleton=1",
+                        PROFILE_BINDING_QUERY,
                         params![],
                         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                     )
                     .optional()?;
-                if existing.is_some_and(|(bound_server,bound_account,bound_device)|
-                    bound_server!=server || Uuid::parse_str(&bound_account).ok()!=Some(account)
-                    || Uuid::parse_str(&bound_device).ok()!=Some(device)) {
-                    return Err(ClientError::InvalidContract(
-                        "this queue belongs to a different server, account or device".into(),
-                    ));
+                if let Some((bound_server, bound_account, bound_device)) = existing {
+                    if bound_server != server
+                        || Uuid::parse_str(&bound_account).ok() != Some(account)
+                        || Uuid::parse_str(&bound_device).ok() != Some(device)
+                    {
+                        return Err(ClientError::InvalidContract(
+                            "this queue belongs to a different server, account or device".into(),
+                        ));
+                    }
+                } else {
+                    tx.execute(
+                        "INSERT INTO profile_binding(singleton,server,account_id,device_id) VALUES (1,?1,?2,?3)",
+                        params![server, account.to_string(), device.to_string()],
+                    )?;
                 }
-                tx.execute("INSERT INTO profile_binding(singleton,server,account_id,device_id) VALUES (1,?1,?2,?3) ON CONFLICT(singleton) DO NOTHING", params![server,account.to_string(),device.to_string()])?;
                 Value::Null
             }
             TransferCommand::CreateBatch { id, items } => {

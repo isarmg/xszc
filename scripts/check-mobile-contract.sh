@@ -9,13 +9,13 @@ fail() {
     exit 1
 }
 
-test ! -e crates/mobile-ffi/include/xszc.h \
+test ! -e crates/mobile-ffi/include/ana.h \
     || fail "the unversioned C header still exists"
-test -f crates/mobile-ffi/include/xszc_ffi_v1.h \
+test -f crates/mobile-ffi/include/ana_ffi_v1.h \
     || fail "the current ABI 1 C header is missing"
-test ! -e crates/mobile-ffi/include/xszc_v0_2_r1.h \
+test ! -e crates/mobile-ffi/include/ana_v0_2_r1.h \
     || fail "the removed NUL-string C ABI header remains"
-if grep -R -I -n -E 'xszc_v0_2_r1|NativeBridgeV02|withCString|@_silgen_name' crates/mobile-ffi/src clients/ios/Xszc/RustClient.swift clients/android/app/src/main; then
+if grep -R -I -n -E 'ana_v0_2_r1|NativeBridgeV02|withCString|@_silgen_name' crates/mobile-ffi/src clients/ios/Ana/RustClient.swift clients/android/app/src/main; then
     fail "a removed mobile ABI implementation or caller remains"
 fi
 python3 scripts/check-mobile-header.py
@@ -27,8 +27,8 @@ for required_ios_property in \
         || fail "the generated iOS Info.plist contract is missing: $required_ios_property"
 done
 
-if grep -R -I -n -E 'Java_org_sarmg_xszc_NativeBridge_|native(Open|Close|Needs|Enqueue|Next|MarkUpload|MarkPart|MarkComplete|MarkFailed|Stats)([^[:alnum:]_]|$)' \
-    crates/mobile-ffi/src clients/ios/Xszc clients/android/app/src/main; then
+if grep -R -I -n -E 'Java_org_sarmg_ana_NativeBridge_|native(Open|Close|Needs|Enqueue|Next|MarkUpload|MarkPart|MarkComplete|MarkFailed|Stats)([^[:alnum:]_]|$)' \
+    crates/mobile-ffi/src clients/ios/Ana clients/android/app/src/main; then
     fail "a non-current unversioned native ABI entry point remains"
 fi
 
@@ -38,19 +38,19 @@ if grep -R -I -n -E 'com[.]example|Java_com_example_' \
 fi
 
 for required in \
-    'xszc-mobile-v1' \
+    'ana-mobile-v1' \
     'client-v1.sqlite' \
     'backup-staging-v1' \
-    'xszc_open_v1' \
-    'Java_org_sarmg_xszc_NativeBridgeV1_open' \
-    'org.sarmg.xszc'; do
+    'ana_open_v1' \
+    'Java_org_sarmg_ana_NativeBridgeV1_open' \
+    'org.sarmg.ana'; do
     # All platform clients live below clients/; keeping this gate on the
     # canonical paths makes directory drift fail visibly in CI.
     grep -R -I -q -F "$required" crates/mobile-ffi crates/client-core clients/android clients/ios \
         || fail "required mobile ABI v1 contract marker is missing: $required"
 done
 
-grep -q -F 'XSZC_ANDROID_SIGNING_PKCS12_BASE64' .github/workflows/release.yml \
+grep -q -F 'ANA_ANDROID_SIGNING_PKCS12_BASE64' .github/workflows/release.yml \
     || fail "the formal Android release does not require the current PKCS#12 Secret"
 grep -q -F '0cfc2811d48cdeab3e6d857029d879e001ab9531c06784b4d48d15a847771421' \
     .github/workflows/release.yml \
@@ -93,7 +93,7 @@ fi
 python3 - <<'PYIOS'
 from pathlib import Path
 
-source = Path("clients/ios/Xszc/BackupCoordinator.swift").read_text()
+source = Path("clients/ios/Ana/BackupCoordinator.swift").read_text()
 start = source.index("catch {", source.index("do { try await upload.submit"))
 cleanup = source.index('try store.client.transfer(["op": "fail_upload"', start)
 end = source.index("processed += 1", cleanup)
@@ -114,7 +114,7 @@ python3 scripts/test-ios-gallery-metadata.py
 # do not freeze unrelated call counts or exception-handler counts.
 python3 - <<'PYMETADATA'
 from pathlib import Path
-source = Path("clients/android/app/src/main/java/org/sarmg/xszc/CloudGalleryScreen.kt").read_text()
+source = Path("clients/android/app/src/main/java/org/sarmg/ana/CloudGalleryScreen.kt").read_text()
 page = source.split("suspend fun loadPage(reset: Boolean)", 1)[1].split("    fun load(reset:", 1)[0]
 metadata = page.split("if (reset) scope.launch {", 1)[1]
 assert page.index("assets = (assets + page.items)") < page.index("source.albums()")

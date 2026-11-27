@@ -16,7 +16,7 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 #[cfg(unix)]
 mod sandbox_vfs;
 
-const APPLICATION: &str = "xszc";
+const APPLICATION: &str = "ana";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const CURRENT_SCHEMA: &str = include_str!("../../../schema/mobile-current.sql");
 pub(super) const CURRENT_SCHEMA_REVISION: i64 = 1;

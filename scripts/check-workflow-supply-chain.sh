@@ -189,11 +189,11 @@ done
 release_workflow=.github/workflows/release.yml
 for required_release_marker in \
   'environment: android-signing' \
-  'secrets.XSZC_ANDROID_SIGNING_PKCS12_BASE64' \
-  'secrets.XSZC_ANDROID_SIGNING_PKCS12_PASSWORD' \
+  'secrets.ANA_ANDROID_SIGNING_PKCS12_BASE64' \
+  'secrets.ANA_ANDROID_SIGNING_PKCS12_PASSWORD' \
   'assembleRelease' \
   'apksigner' \
-  'org.sarmg.xszc'; do
+  'org.sarmg.ana'; do
   grep -q -F "$required_release_marker" "$release_workflow" ||
     fail "$release_workflow is missing Android release marker: $required_release_marker"
 done
@@ -202,7 +202,7 @@ python3 scripts/test-signing-secret-references.py
 if grep -R -I -n -E 'assembleDebug|app-debug[.]apk' "$release_workflow"; then
   fail "$release_workflow contains a debug APK publication path"
 fi
-if grep -q -F 'XSZC_ANDROID_SIGNING_PKCS12_' .github/workflows/build.yml; then
+if grep -q -F 'ANA_ANDROID_SIGNING_PKCS12_' .github/workflows/build.yml; then
   fail "ordinary CI must not receive formal Android signing Secrets"
 fi
 

@@ -1,4 +1,4 @@
-module XszcRust {
-    header "xszc_ffi_v1.h"
+module AnaRust {
+    header "ana_ffi_v1.h"
     export *
 }

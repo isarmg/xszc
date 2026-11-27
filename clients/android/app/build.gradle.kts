@@ -8,20 +8,20 @@ plugins {
 // Distribution versions must not silently change the persisted mobile state identity.
 // Rust software follows VERSION; MobileContractV1 retains the explicit 1.0.0 / v1 contract.
 val workspaceVersion = file("../../../VERSION").readText().trim()
-val emulatorTests = providers.gradleProperty("xszcEmulatorTests").orNull == "true"
+val emulatorTests = providers.gradleProperty("anaEmulatorTests").orNull == "true"
 
 val semanticVersion = workspaceVersion.substringBefore('-').split('.').map(String::toInt)
 require(semanticVersion.size == 3) { "Workspace version must use major.minor.patch" }
 require(workspaceVersion == "1.0.0") {
-    "This release builds xszc 1.0.0"
+    "This release builds ana 1.0.0"
 }
 
 val releasePkcs12Path = providers
-    .environmentVariable("XSZC_ANDROID_SIGNING_PKCS12_PATH")
+    .environmentVariable("ANA_ANDROID_SIGNING_PKCS12_PATH")
     .orNull
     ?.takeIf { it.isNotBlank() }
 val releasePkcs12Password = providers
-    .environmentVariable("XSZC_ANDROID_SIGNING_PKCS12_PASSWORD")
+    .environmentVariable("ANA_ANDROID_SIGNING_PKCS12_PASSWORD")
     .orNull
     ?.takeIf { it.isNotEmpty() }
 
@@ -35,24 +35,24 @@ gradle.taskGraph.whenReady {
     if (buildsReleaseVariant) {
         require(!emulatorTests) { "Emulator ABI is restricted to debug tests" }
         val signingPath = requireNotNull(releasePkcs12Path) {
-            "Release tasks require XSZC_ANDROID_SIGNING_PKCS12_PATH"
+            "Release tasks require ANA_ANDROID_SIGNING_PKCS12_PATH"
         }
         requireNotNull(releasePkcs12Password) {
-            "Release tasks require XSZC_ANDROID_SIGNING_PKCS12_PASSWORD"
+            "Release tasks require ANA_ANDROID_SIGNING_PKCS12_PASSWORD"
         }
         require(file(signingPath).isFile) {
-            "XSZC_ANDROID_SIGNING_PKCS12_PATH must name a regular file"
+            "ANA_ANDROID_SIGNING_PKCS12_PATH must name a regular file"
         }
     }
 }
 
 android {
-    namespace = "org.sarmg.xszc"
+    namespace = "org.sarmg.ana"
     compileSdk = 37
     buildToolsVersion = "37.0.0"
 
     defaultConfig {
-        applicationId = "org.sarmg.xszc"
+        applicationId = "org.sarmg.ana"
         minSdk = 37
         targetSdk = 37
         versionCode = semanticVersion[0] * 1_000_000 + semanticVersion[1] * 1_000 + semanticVersion[2]
@@ -70,7 +70,7 @@ android {
                 create("release") {
                     storeFile = file(signingPath)
                     storePassword = signingPassword
-                    keyAlias = "xszc-android-release"
+                    keyAlias = "ana-android-release"
                     keyPassword = signingPassword
                     storeType = "PKCS12"
                 }
@@ -125,7 +125,7 @@ dependencies {
 
 // Opt in only for the CI unit/assemble invocation. Gradle's normal input
 // fingerprints decide compiler reuse; tests and packaging are never cached here.
-if (providers.gradleProperty("xszcCiCompilationCache").orNull == "true") {
+if (providers.gradleProperty("anaCiCompilationCache").orNull == "true") {
     val cachedCompilationTasks = setOf(
         "compileDebugKotlin",
         "compileDebugUnitTestKotlin",

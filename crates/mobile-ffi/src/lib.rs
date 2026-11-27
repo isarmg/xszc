@@ -1,15 +1,15 @@
 //! Current product ABI: xcsc revision 1, length-delimited inputs and owned results.
+use ana_core::{
+    Client, ClientConfig, EnqueueResource, MOBILE_APPLICATION_VERSION, MOBILE_DATABASE_FILENAME,
+    MOBILE_PRODUCT, MOBILE_REVISION, MOBILE_STAGING_DIRECTORY, MOBILE_STATE_EPOCH,
+    UPLOAD_OPERATION_HEADER,
+};
 use serde_json::{json, Value};
 use std::{
     path::{Component, Path},
     sync::{Arc, OnceLock},
 };
 use xcsc::mobile_ffi::{self as ffi, FfiError, Handle, HandleRegistry, Payload, XcscFfiResultV1};
-use xszc_core::{
-    Client, ClientConfig, EnqueueResource, MOBILE_APPLICATION_VERSION, MOBILE_DATABASE_FILENAME,
-    MOBILE_PRODUCT, MOBILE_REVISION, MOBILE_STAGING_DIRECTORY, MOBILE_STATE_EPOCH,
-    UPLOAD_OPERATION_HEADER,
-};
 
 const MAX_PATH_BYTES: usize = 4096;
 const MAX_IDENTIFIER_BYTES: usize = 4096;
@@ -44,14 +44,14 @@ fn verify_file_impl(path: &str, expected_size: u64, expected_hash: &str) -> Resu
     {
         return Err(FfiError::invalid_argument());
     }
-    xszc_crypto::verify_file_blake3(path, expected_size, expected_hash).map_err(internal)
+    ana_crypto::verify_file_blake3(path, expected_size, expected_hash).map_err(internal)
 }
 fn open_impl(path: &str, config: &str) -> Result<u64, FfiError> {
     let config: ClientConfig =
         serde_json::from_str(config).map_err(|_| FfiError::invalid_argument())?;
     require_path(path, MOBILE_DATABASE_FILENAME)?;
     let client = Client::open(path, config).map_err(|error| match error {
-        xszc_core::ClientError::InvalidContract(_) => FfiError::invalid_argument(),
+        ana_core::ClientError::InvalidContract(_) => FfiError::invalid_argument(),
         _ => FfiError::internal_with_message(error.public_open_message()),
     })?;
     clients().insert(Arc::new(client)).map(Handle::to_u64)
@@ -82,7 +82,7 @@ fn transfer_impl(handle: u64, input: &str) -> Result<Value, FfiError> {
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_transfer_v1(
+pub unsafe extern "C" fn ana_transfer_v1(
     handle: u64,
     input: *const u8,
     input_len: usize,
@@ -120,22 +120,28 @@ fn stats_impl(handle: u64) -> Result<Value, FfiError> {
         serde_json::to_value(a.stats().map_err(internal)?).map_err(internal)
     })
 }
-fn envelope(value: Value) -> Result<String, FfiError> {
-    let value = json!({
+fn envelope_bytes(value: Value) -> Result<Vec<u8>, FfiError> {
+    let mut envelope = json!({
         "product": MOBILE_PRODUCT, "application_version": MOBILE_APPLICATION_VERSION,
         "revision": MOBILE_REVISION, "state_epoch": MOBILE_STATE_EPOCH,
-        "ok": true, "value": value, "error": null,
+        "ok": true, "value": null, "error": null,
     });
+    envelope["value"] = value;
     let mut output = ffi::OutputBuffer::default();
-    serde_json::to_writer(&mut output, &value).map_err(|_| FfiError::resource_exhausted())?;
-    String::from_utf8(output.into_bytes()).map_err(internal)
+    serde_json::to_writer(&mut output, &envelope).map_err(|_| FfiError::resource_exhausted())?;
+    Ok(output.into_bytes())
+}
+
+#[cfg(any(target_os = "android", test, feature = "jni-host-tests"))]
+fn envelope(value: Value) -> Result<String, FfiError> {
+    String::from_utf8(envelope_bytes(value)?).map_err(internal)
 }
 fn json_payload(value: Value) -> Result<Payload, FfiError> {
-    Payload::bytes(envelope(value)?.into_bytes())
+    Payload::bytes(envelope_bytes(value)?)
 }
 
 #[no_mangle]
-pub extern "C" fn xszc_ffi_abi_revision() -> u32 {
+pub extern "C" fn ana_ffi_abi_revision() -> u32 {
     ffi::boundary(|| Ok(ffi::ABI_REVISION)).unwrap_or(0)
 }
 /// # Safety
@@ -143,7 +149,7 @@ pub extern "C" fn xszc_ffi_abi_revision() -> u32 {
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_open_v1(
+pub unsafe extern "C" fn ana_open_v1(
     path: *const u8,
     path_len: usize,
     config: *const u8,
@@ -165,7 +171,7 @@ pub unsafe extern "C" fn xszc_open_v1(
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_close_v1(handle: u64, output: *mut XcscFfiResultV1) -> i32 {
+pub unsafe extern "C" fn ana_close_v1(handle: u64, output: *mut XcscFfiResultV1) -> i32 {
     // SAFETY: The caller supplies valid ABI buffers as documented above.
     // Shared xcsc validates lengths and owns panic/result handling.
     unsafe {
@@ -180,7 +186,7 @@ pub unsafe extern "C" fn xszc_close_v1(handle: u64, output: *mut XcscFfiResultV1
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_needs_v1(
+pub unsafe extern "C" fn ana_needs_v1(
     handle: u64,
     asset: *const u8,
     asset_len: usize,
@@ -208,7 +214,7 @@ pub unsafe extern "C" fn xszc_needs_v1(
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_verify_file_blake3_v1(
+pub unsafe extern "C" fn ana_verify_file_blake3_v1(
     path: *const u8,
     path_len: usize,
     expected_size: u64,
@@ -232,7 +238,7 @@ pub unsafe extern "C" fn xszc_verify_file_blake3_v1(
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_enqueue_v1(
+pub unsafe extern "C" fn ana_enqueue_v1(
     handle: u64,
     input: *const u8,
     input_len: usize,
@@ -254,7 +260,7 @@ pub unsafe extern "C" fn xszc_enqueue_v1(
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_next_v1(
+pub unsafe extern "C" fn ana_next_v1(
     handle: u64,
     staging: *const u8,
     staging_len: usize,
@@ -276,7 +282,7 @@ pub unsafe extern "C" fn xszc_next_v1(
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_mark_upload_v1(
+pub unsafe extern "C" fn ana_mark_upload_v1(
     handle: u64,
     job: *const u8,
     job_len: usize,
@@ -300,7 +306,7 @@ pub unsafe extern "C" fn xszc_mark_upload_v1(
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_mark_part_v1(
+pub unsafe extern "C" fn ana_mark_part_v1(
     handle: u64,
     job: *const u8,
     job_len: usize,
@@ -324,7 +330,7 @@ pub unsafe extern "C" fn xszc_mark_part_v1(
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_mark_complete_v1(
+pub unsafe extern "C" fn ana_mark_complete_v1(
     handle: u64,
     job: *const u8,
     job_len: usize,
@@ -345,7 +351,7 @@ pub unsafe extern "C" fn xszc_mark_complete_v1(
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_mark_failed_v1(
+pub unsafe extern "C" fn ana_mark_failed_v1(
     handle: u64,
     job: *const u8,
     job_len: usize,
@@ -376,7 +382,7 @@ pub unsafe extern "C" fn xszc_mark_failed_v1(
 /// for this call. `output` must point to an aligned, initialized, exclusively
 /// writable result; free any prior owned result before reusing it.
 #[no_mangle]
-pub unsafe extern "C" fn xszc_stats_v1(handle: u64, output: *mut XcscFfiResultV1) -> i32 {
+pub unsafe extern "C" fn ana_stats_v1(handle: u64, output: *mut XcscFfiResultV1) -> i32 {
     // SAFETY: The caller supplies valid ABI buffers as documented above.
     // Shared xcsc validates lengths and owns panic/result handling.
     unsafe { ffi::guard(output, || json_payload(stats_impl(handle)?)) }

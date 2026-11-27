@@ -23,7 +23,7 @@ cargo_version="$({
 })"
 ios_version="$(sed -n 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"\([^"]*\)"/\1/p' clients/ios/project.yml | head -n 1)"
 state_version="$(sed -n 's/^pub const MOBILE_APPLICATION_VERSION: &str = "\([^"]*\)";/\1/p' crates/client-core/src/lib.rs)"
-abi_revision="$(sed -n 's/^#define XCSC_FFI_ABI_REVISION \([0-9]*\)u$/\1/p' crates/mobile-ffi/include/xszc_ffi_v1.h)"
+abi_revision="$(sed -n 's/^#define XCSC_FFI_ABI_REVISION \([0-9]*\)u$/\1/p' crates/mobile-ffi/include/ana_ffi_v1.h)"
 
 if [[ -z "$cargo_version" || -z "$ios_version" ]]; then
   echo "Unable to read the Cargo or iOS project version." >&2

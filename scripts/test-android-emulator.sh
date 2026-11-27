@@ -3,10 +3,10 @@ set -euo pipefail
 
 # A fresh, dedicated CI AVD; never targets a connected physical device.
 sdk_root="${ANDROID_HOME:?Android SDK required}"
-avd_name="xszc-api37-${GITHUB_RUN_ID:?CI run ID required}-${GITHUB_RUN_ATTEMPT:-1}"
+avd_name="ana-api37-${GITHUB_RUN_ID:?CI run ID required}-${GITHUB_RUN_ATTEMPT:-1}"
 # New SDK tools and emulator releases can choose different default AVD homes.
 # Pin both to this run's isolated directory; do not repurpose the user's HOME.
-avd_storage="$(mktemp -d "${RUNNER_TEMP:?}/xszc-avd.XXXXXX")"
+avd_storage="$(mktemp -d "${RUNNER_TEMP:?}/ana-avd.XXXXXX")"
 export ANDROID_USER_HOME="$avd_storage"
 export ANDROID_AVD_HOME="$avd_storage/avd"
 mkdir -p "$ANDROID_AVD_HOME"
@@ -42,12 +42,12 @@ test -f "$ANDROID_AVD_HOME/$avd_name.ini"
 grep -Eq '^HardwareDecoder[[:space:]]*=' "$sdk_root/emulator/lib/advancedFeatures.ini"
 "$sdk_root/emulator/emulator" -avd "$avd_name" -port 5554 -no-window -no-audio \
   -no-boot-anim -no-snapshot -gpu swiftshader_indirect -feature -HardwareDecoder \
-  >"${RUNNER_TEMP:?}/xszc-emulator.log" 2>&1 &
+  >"${RUNNER_TEMP:?}/ana-emulator.log" 2>&1 &
 emulator_pid=$!
 booted=false
 boot_deadline=$((SECONDS + 360))
 while ((SECONDS < boot_deadline)); do
-  kill -0 "$emulator_pid" 2>/dev/null || { tail -100 "$RUNNER_TEMP/xszc-emulator.log"; exit 1; }
+  kill -0 "$emulator_pid" 2>/dev/null || { tail -100 "$RUNNER_TEMP/ana-emulator.log"; exit 1; }
   if [[ "$(timeout --kill-after=2s 5s "$sdk_root/platform-tools/adb" -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then
     booted=true
     break
@@ -55,11 +55,11 @@ while ((SECONDS < boot_deadline)); do
   sleep 3
 done
 if [[ "$booted" != true ]]; then
-  tail -100 "$RUNNER_TEMP/xszc-emulator.log"
+  tail -100 "$RUNNER_TEMP/ana-emulator.log"
   echo 'Android emulator did not finish booting within six minutes.' >&2
   exit 1
 fi
 test "$(timeout --kill-after=2s 10s "$sdk_root/platform-tools/adb" -s "$serial" shell getprop ro.build.version.sdk | tr -d '\r')" = 37
 test "$(timeout --kill-after=2s 10s "$sdk_root/platform-tools/adb" -s "$serial" shell getprop ro.boot.qemu.hwcodec.avcdec | tr -d '\r')" != 2
 test "$(timeout --kill-after=2s 10s "$sdk_root/platform-tools/adb" -s "$serial" shell getenforce | tr -d '\r')" = Enforcing
-ANDROID_SERIAL="$serial" timeout --kill-after=30s 10m gradle -p clients/android -PxszcEmulatorTests=true connectedDebugAndroidTest
+ANDROID_SERIAL="$serial" timeout --kill-after=30s 10m gradle -p clients/android -PanaEmulatorTests=true connectedDebugAndroidTest

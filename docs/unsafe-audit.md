@@ -41,8 +41,8 @@ SQLx 产品连接和事务封装没有 unsafe。Rust slice 复制可替代一般
 | 适用条款 | 当前实现与本轮验收 | 真实限制 |
 |---|---|---|
 | 2–5、19：职责、目录与身份 | Rust 工作区的client-core、crypto、mobile-ffi是真实独立职责；clients/android、clients/ios拥有UI/系统照片机制。只保留根Cargo.lock。软件1.1.0、mobile-v1、schema1、epoch、C/JNI ABI1分别校验，不按发行号迁移队列。 | 移动不是桌面daemon；CLI/SCM/Web约束不强行植入移动应用。 |
-| 6–8、11–14：状态和副作用 | 固定schema/hash、NOFOLLOW VFS、真实SQLx事务与私有目录校验；实例/照片/task稳定身份、prepared parts和SQL状态协调。授权码轮换保留同实例队列，错实例拒绝；取消与完成分开；照片和prepared bytes有预算。 | 设备权限、PhotoKit/WorkManager后台调度由OS决定，UI启用不等于后台传输已完成。 |
-| 15–16：日志和界面 | 账户、Token、授权码不进入诊断；Android私有配置、iOS Keychain及UI区分照片权限、排队、传输和完成。 | Native UI、真机照片权限/后台以及实际安装与签名需最终平台执行证明。 |
+| 6–8、11–14：状态和副作用 | 固定schema/hash、NOFOLLOW VFS、真实SQLx事务与私有目录校验；实例/照片/task稳定身份、prepared parts和SQL状态协调。同一设备重新登录保留队列，绑定身份不匹配时拒绝复用；取消与完成分开；照片和prepared bytes有预算。 | 设备权限、PhotoKit/WorkManager后台调度由OS决定，UI启用不等于后台传输已完成。 |
+| 15–16：日志和界面 | 密码和 Token 不进入诊断；Android私有配置、iOS Keychain及UI区分照片权限、排队、传输和完成。 | Native UI、真机照片权限/后台以及实际安装与签名需最终平台执行证明。 |
 | 20–23：验证与发行 | 0.6.4 本机验证见上文，历史 0.6.3、0.6.2 证据独立保留。cargo-ndk4.1.2、Temurin官方SemVer17.0.20+101精确安装，实际runtime17.0.20.1+1和XcodeGen2.46.0在构建前验证。 | 模拟器不代替真机安装/照片后台行为。新版本 Release 须再次核验 Android 唯一签名者和 iOS 未签名标志。 |
 
 

@@ -7,7 +7,6 @@ from pathlib import Path
 import plistlib
 import shutil
 import struct
-import tempfile
 import tomllib
 import zipfile
 
@@ -20,14 +19,13 @@ def common():
     return module
 
 
-def bindings(path,product,platform):
+def bindings(path,platform):
     native=[];managed=[]
     with zipfile.ZipFile(path) as archive:
         names=archive.namelist()
         if len(names)!=len(set(names)):raise ValueError('mobile archive has duplicate entries')
         if platform=='android':
-            library='libxcoc_mobile_ffi.so' if product=='xcoc' else 'libxszc_mobile.so'
-            expected=('base/lib/' if path.suffix=='.aab' else 'lib/')+'arm64-v8a/'+library
+            expected=('base/lib/' if path.suffix=='.aab' else 'lib/')+'arm64-v8a/libana_mobile.so'
             if expected not in names:raise ValueError('final mobile archive lacks its actual Rust library')
             with archive.open(expected) as source:header=source.read(64)
             if len(header)<20 or header[:6]!=b'\x7fELF\x02\x01' or struct.unpack_from('<H',header,18)[0]!=183:
@@ -41,7 +39,7 @@ def bindings(path,product,platform):
                     managed.append({'path':path.name,'archive_entry':name})
             if not managed:raise ValueError('Android runtime graph has no final DEX artifact')
         else:
-            app='XcocCamera.app' if product=='xcoc' else 'Xszc.app'
+            app='Ana.app'
             infos=[name for name in names if name.endswith('/'+app+'/Info.plist') or name==app+'/Info.plist']
             if len(infos)!=1:raise ValueError('mobile archive has no unique application bundle')
             info=plistlib.loads(archive.read(infos[0]));executable=info.get('CFBundleExecutable')
@@ -58,13 +56,13 @@ def bindings(path,product,platform):
 def package(artifacts,output,platform,gradle_export=None):
     module=common();environment=module.clean_environment()
     profile=tomllib.loads((ROOT/'xcsc-client.toml').read_text());product=profile['product_id']
-    if product not in ('xcoc','xszc'):raise ValueError('unknown mobile product')
+    if product not in ('xcoc','ana'):raise ValueError('unknown mobile product')
     manifest=tomllib.loads((ROOT/'Cargo.toml').read_text())
     version=manifest['package']['version'] if product=='xcoc' else manifest['workspace']['package']['version']
     revision=module.run(['git','rev-parse','HEAD'],ROOT,environment)
     target={'android':'aarch64-linux-android','ios-device':'aarch64-apple-ios',
             'ios-simulator':'aarch64-apple-ios-sim'}[platform]
-    root_name='xcoc-mobile-ffi' if product=='xcoc' else 'xszc-mobile'
+    root_name='ana-mobile'
     output=Path(output)
     if not output.is_absolute() or output.exists():raise ValueError('mobile inventory output must be a new absolute directory')
     if platform=='android' and gradle_export is None:raise ValueError('Android requires the actual release runtime resolution export')
@@ -75,13 +73,12 @@ def package(artifacts,output,platform,gradle_export=None):
         if source.is_symlink() or not source.is_file() or (output/source.name).exists():
             raise ValueError('mobile package source must be a unique physical file')
         destination=output/source.name;shutil.copyfile(source,destination)
-        current_native,current_managed=bindings(destination,product,platform)
+        current_native,current_managed=bindings(destination,platform)
         native.extend(current_native);managed.extend(current_managed)
     graphs=[]
     if platform=='android':
-        with tempfile.TemporaryDirectory(prefix=product+'-android-runtime-') as temporary:
-            tools=module.checkout_tools(Path(temporary).resolve(strict=True)/'tools',environment)
-            producer=module.load_tool('gradle_sbom',tools)
+        with module.exported_release_tools(revision, environment):
+            import gradle_sbom as producer
             bom=producer.produce(json.loads(Path(gradle_export).read_text(encoding='utf-8')),output,product,version,revision)
         graphs.append({'bom':str(bom),'files':managed})
     module.generate(output,product=product,version=version,revision=revision,target=target,

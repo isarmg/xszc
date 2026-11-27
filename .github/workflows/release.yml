@@ -7,9 +7,9 @@ on:
 
 env:
   RELEASE_TAG: ${{ github.ref_name }}
-  XSZC_ANDROID_APPLICATION_ID: org.sarmg.xszc
-  XSZC_ANDROID_SIGNING_KEY_ALIAS: xszc-android-release
-  XSZC_ANDROID_SIGNING_CERT_SHA256: 0cfc2811d48cdeab3e6d857029d879e001ab9531c06784b4d48d15a847771421
+  ANA_ANDROID_APPLICATION_ID: org.sarmg.ana
+  ANA_ANDROID_SIGNING_KEY_ALIAS: ana-android-release
+  ANA_ANDROID_SIGNING_CERT_SHA256: 0cfc2811d48cdeab3e6d857029d879e001ab9531c06784b4d48d15a847771421
 
 concurrency:
   group: release-${{ github.ref_name }}
@@ -44,8 +44,7 @@ jobs:
       - run: ./scripts/check-workflow-supply-chain.sh
       - run: python3 scripts/test-package-ios-ipa.py
       - run: cargo fmt --all -- --check
-      - run: cargo check --workspace --locked
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo test --workspace --locked
 
   android:
@@ -100,41 +99,41 @@ jobs:
         run: |
           export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/28.2.13676358"
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
-          cargo ndk -t arm64-v8a -o clients/android/app/src/main/jniLibs build -p xszc-mobile --release --locked
+          cargo ndk -t arm64-v8a -o clients/android/app/src/main/jniLibs build -p ana-mobile --release --locked
       - name: Test Android HTTP and state contracts before signing
         run: gradle -p clients/android testDebugUnitTest
       - name: Export the exact Android release runtime graph without signing credentials
         run: |
           gradle -p clients/android -I "$PWD/scripts/export-android-runtime.gradle" \
-            "-PxssiRuntimeExport=$RUNNER_TEMP/xszc-android-runtime.json" :app:exportXssiRuntimeInventory
+            "-PxssiRuntimeExport=$RUNNER_TEMP/ana-android-runtime.json" :app:exportXssiRuntimeInventory
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: xszc-formal-android-runtime-resolution
-          path: ${{ runner.temp }}/xszc-android-runtime.json
+          name: ana-formal-android-runtime-resolution
+          path: ${{ runner.temp }}/ana-android-runtime.json
           if-no-files-found: warn
       - name: Materialize and validate the current signing identity
         env:
-          XSZC_ANDROID_SIGNING_PKCS12_BASE64: ${{ secrets.XSZC_ANDROID_SIGNING_PKCS12_BASE64 }}
-          XSZC_ANDROID_SIGNING_PKCS12_PASSWORD: ${{ secrets.XSZC_ANDROID_SIGNING_PKCS12_PASSWORD }}
+          ANA_ANDROID_SIGNING_PKCS12_BASE64: ${{ secrets.ANA_ANDROID_SIGNING_PKCS12_BASE64 }}
+          ANA_ANDROID_SIGNING_PKCS12_PASSWORD: ${{ secrets.ANA_ANDROID_SIGNING_PKCS12_PASSWORD }}
         run: |
-          test -n "$XSZC_ANDROID_SIGNING_PKCS12_BASE64"
-          test -n "$XSZC_ANDROID_SIGNING_PKCS12_PASSWORD"
-          printf '%s' "$XSZC_ANDROID_SIGNING_PKCS12_BASE64" \
-            | base64 --decode >"$RUNNER_TEMP/xszc-android-release.p12"
-          test -s "$RUNNER_TEMP/xszc-android-release.p12"
+          test -n "$ANA_ANDROID_SIGNING_PKCS12_BASE64"
+          test -n "$ANA_ANDROID_SIGNING_PKCS12_PASSWORD"
+          printf '%s' "$ANA_ANDROID_SIGNING_PKCS12_BASE64" \
+            | base64 --decode >"$RUNNER_TEMP/ana-android-release.p12"
+          test -s "$RUNNER_TEMP/ana-android-release.p12"
           alias_line="$(
             openssl pkcs12 \
-              -in "$RUNNER_TEMP/xszc-android-release.p12" \
-              -passin env:XSZC_ANDROID_SIGNING_PKCS12_PASSWORD \
+              -in "$RUNNER_TEMP/ana-android-release.p12" \
+              -passin env:ANA_ANDROID_SIGNING_PKCS12_PASSWORD \
               -clcerts -nokeys \
               | sed -n 's/^    friendlyName: //p'
           )"
-          test "$alias_line" = "$XSZC_ANDROID_SIGNING_KEY_ALIAS"
+          test "$alias_line" = "$ANA_ANDROID_SIGNING_KEY_ALIAS"
       - name: Build the signed release APK
         env:
-          XSZC_ANDROID_SIGNING_PKCS12_PATH: ${{ runner.temp }}/xszc-android-release.p12
-          XSZC_ANDROID_SIGNING_PKCS12_PASSWORD: ${{ secrets.XSZC_ANDROID_SIGNING_PKCS12_PASSWORD }}
+          ANA_ANDROID_SIGNING_PKCS12_PATH: ${{ runner.temp }}/ana-android-release.p12
+          ANA_ANDROID_SIGNING_PKCS12_PASSWORD: ${{ secrets.ANA_ANDROID_SIGNING_PKCS12_PASSWORD }}
         run: gradle -p clients/android assembleRelease
       - name: Verify and package the signed APK
         run: |
@@ -150,25 +149,25 @@ jobs:
               | sed -n -E 's/^(Signer|V[1-4](\.[0-9]+)? .*Signer).* certificate SHA-256 digest: //p' \
               | sort -u
           )"
-          test "${actual_fingerprint,,}" = "$XSZC_ANDROID_SIGNING_CERT_SHA256"
+          test "${actual_fingerprint,,}" = "$ANA_ANDROID_SIGNING_CERT_SHA256"
           badging="$("$ANDROID_HOME/build-tools/37.0.0/aapt2" dump badging "$apk")"
-          printf '%s\n' "$badging" | grep -F "package: name='$XSZC_ANDROID_APPLICATION_ID'"
+          printf '%s\n' "$badging" | grep -F "package: name='$ANA_ANDROID_APPLICATION_ID'"
           test "$(zipinfo -1 "$apk" | awk -F/ '$1 == "lib" { print $2 }' | sort -u)" = "arm64-v8a"
-          zipinfo -1 "$apk" | grep -Fx 'lib/arm64-v8a/libxszc_mobile.so'
+          zipinfo -1 "$apk" | grep -Fx 'lib/arm64-v8a/libana_mobile.so'
           mkdir -p dist
-          install -m 0444 "$apk" "dist/xszc-android-${version}-arm64.apk"
+          install -m 0444 "$apk" "dist/ana-android-${version}-arm64.apk"
       - name: Inventory the final signed APK and its actual runtime artifacts
         run: |
           version="${RELEASE_TAG#v}"
           python3 scripts/package-mobile-inventory.py --platform android \
-            --package "dist/xszc-android-${version}-arm64.apk" \
-            --gradle-export "$RUNNER_TEMP/xszc-android-runtime.json" \
-            --output "$RUNNER_TEMP/xszc-android-delivery"
+            --package "dist/ana-android-${version}-arm64.apk" \
+            --gradle-export "$RUNNER_TEMP/ana-android-runtime.json" \
+            --output "$RUNNER_TEMP/ana-android-delivery"
       - name: Finalize and verify the complete Android release manifest
         run: |
-          python3 scripts/verify-release-inventory.py --stage "$RUNNER_TEMP/xszc-android-delivery" \
+          python3 scripts/verify-release-inventory.py --stage "$RUNNER_TEMP/ana-android-delivery" \
             --target aarch64-linux-android
-          tar -C "$RUNNER_TEMP/xszc-android-delivery" -czf "dist/xszc-android-${RELEASE_TAG#v}-delivery.tar.gz" .
+          tar -C "$RUNNER_TEMP/ana-android-delivery" -czf "dist/ana-android-${RELEASE_TAG#v}-delivery.tar.gz" .
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-android
@@ -216,24 +215,24 @@ jobs:
       - run: ./scripts/build-ios-rust.sh
       - run: cd clients/ios && xcodegen generate
       - name: Build without signing
-        run: xcodebuild -project clients/ios/Xszc.xcodeproj -scheme Xszc -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath clients/ios/DerivedData build
+        run: xcodebuild -project clients/ios/Ana.xcodeproj -scheme Ana -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath clients/ios/DerivedData build
       - name: Package unsigned IPA
         run: |
           version="${RELEASE_TAG#v}"
           python3 scripts/package-ios-ipa.py \
-            --app clients/ios/DerivedData/Build/Products/Release-iphoneos/Xszc.app \
+            --app clients/ios/DerivedData/Build/Products/Release-iphoneos/Ana.app \
             --version "$version" \
-            --output "dist/xszc-ios-${version}-unsigned.ipa"
+            --output "dist/ana-ios-${version}-unsigned.ipa"
       - name: Inventory the final device IPA without changing its bytes
         run: |
           python3 scripts/package-mobile-inventory.py --platform ios-device \
-            --package "dist/xszc-ios-${RELEASE_TAG#v}-unsigned.ipa" \
-            --output "$RUNNER_TEMP/xszc-ios-delivery"
+            --package "dist/ana-ios-${RELEASE_TAG#v}-unsigned.ipa" \
+            --output "$RUNNER_TEMP/ana-ios-delivery"
       - name: Finalize and verify the complete iOS release manifest
         run: |
-          python3 scripts/verify-release-inventory.py --stage "$RUNNER_TEMP/xszc-ios-delivery" \
+          python3 scripts/verify-release-inventory.py --stage "$RUNNER_TEMP/ana-ios-delivery" \
             --target aarch64-apple-ios
-          tar -C "$RUNNER_TEMP/xszc-ios-delivery" -czf "dist/xszc-ios-${RELEASE_TAG#v}-delivery.tar.gz" .
+          tar -C "$RUNNER_TEMP/ana-ios-delivery" -czf "dist/ana-ios-${RELEASE_TAG#v}-delivery.tar.gz" .
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-ios

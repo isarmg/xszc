@@ -879,7 +879,7 @@ fn transfer_contract_rejects_unknown_fields_and_old_identity() {
     let root = tempfile::tempdir().unwrap();
     let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
     let mut old = request(json!({"op":"batches"}));
-    old.state_epoch = "xszc-mobile-v0.3-r1".into();
+    old.state_epoch = "ana-mobile-v0.3-r1".into();
     assert!(client.transfer(old).is_err());
 }
 #[test]

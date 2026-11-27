@@ -1,4 +1,4 @@
-name: Xszc
+name: Ana
 options:
   bundleIdPrefix: org.sarmg
   deploymentTarget:
@@ -10,15 +10,15 @@ settings:
     CURRENT_PROJECT_VERSION: "1000000"
     "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
 targets:
-  Xszc:
+  Ana:
     type: application
     platform: iOS
     sources:
-      - Xszc
+      - Ana
     info:
-      path: Xszc/Info.plist
+      path: Ana/Info.plist
       properties:
-        CFBundleDisplayName: xszc 媒体备份
+        CFBundleDisplayName: ana
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
@@ -28,50 +28,50 @@ targets:
           - fetch
           - processing
         BGTaskSchedulerPermittedIdentifiers:
-          - org.sarmg.xszc.processing.v1
+          - org.sarmg.ana.processing.v1
     entitlements:
-      path: Xszc/Xszc.entitlements
+      path: Ana/Ana.entitlements
     dependencies:
-      - framework: Vendor/XszcRust.xcframework
+      - framework: Vendor/AnaRust.xcframework
         embed: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.sarmg.xszc
-        PRODUCT_NAME: Xszc
+        PRODUCT_BUNDLE_IDENTIFIER: org.sarmg.ana
+        PRODUCT_NAME: Ana
         CODE_SIGN_STYLE: Automatic
-  XszcTests:
+  AnaTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - XszcTests
+      - AnaTests
     dependencies:
-      - target: Xszc
-      - framework: Vendor/XszcRust.xcframework
+      - target: Ana
+      - framework: Vendor/AnaRust.xcframework
         embed: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.sarmg.xszc.tests
+        PRODUCT_BUNDLE_IDENTIFIER: org.sarmg.ana.tests
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
-  XszcUITests:
+  AnaUITests:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - XszcUITests
+      - AnaUITests
     dependencies:
-      - target: Xszc
+      - target: Ana
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: org.sarmg.xszc.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: org.sarmg.ana.uitests
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
 schemes:
-  Xszc:
+  Ana:
     build:
       targets:
-        Xszc: all
+        Ana: all
     test:
       config: Debug
       targets:
-        - XszcTests
-        - XszcUITests
+        - AnaTests
+        - AnaUITests

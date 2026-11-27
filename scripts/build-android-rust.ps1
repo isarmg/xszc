@@ -3,7 +3,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $output = Join-Path $root "clients\android\app\src\main\jniLibs"
 Push-Location $root
 try {
-    cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o $output build -p xszc-mobile --release --locked
+    cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o $output build -p ana-mobile --release --locked
 } finally {
     Pop-Location
 }

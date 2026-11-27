@@ -12,8 +12,8 @@ import unittest
 parser = argparse.ArgumentParser()
 parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
 args, remaining = parser.parse_known_args()
-ANDROID = args.root / 'clients/android/app/src/main/java/org/sarmg/xszc/LocalGridScreen.kt'
-IOS = args.root / 'clients/ios/Xszc/LocalGalleryScreen.swift'
+ANDROID = args.root / 'clients/android/app/src/main/java/org/sarmg/ana/LocalGridScreen.kt'
+IOS = args.root / 'clients/ios/Ana/LocalGalleryScreen.swift'
 
 
 def block(source, marker):
@@ -114,7 +114,7 @@ class PhotoObserverLifecycleTests(unittest.TestCase):
 
 class LoginInputSynchronizationTests(unittest.TestCase):
     def test_first_password_input_waits_for_visible_field_and_keyboard_without_retry(self):
-        source = (args.root / 'clients/ios/XszcUITests/NavigationTests.swift').read_text()
+        source = (args.root / 'clients/ios/AnaUITests/NavigationTests.swift').read_text()
         body = block(source, 'func testLoginRemainsReachableFromGalleryAndSettings')
         sync = body[body.index('let password ='):body.index('screenshot("account-login-keyboard")')]
         self.assertIn('password.exists && password.isHittable', sync)
@@ -125,7 +125,7 @@ class LoginInputSynchronizationTests(unittest.TestCase):
         self.assertNotIn('value(forKey:', sync)
         self.assertNotIn('hasKeyboardFocus', sync)
         keyboard = 'app.keyboards.firstMatch.waitForExistence(timeout: 5)'
-        typed = 'password.typeText("test-instance-code")'
+        typed = 'password.typeText("test-password")'
         self.assertLess(sync.index('.tap()'), sync.index(keyboard))
         self.assertLess(sync.index(keyboard), sync.index('XCTAssertTrue(keyboardReady'))
         self.assertLess(sync.index('XCTAssertTrue(keyboardReady'), sync.index(typed))
@@ -134,12 +134,13 @@ class LoginInputSynchronizationTests(unittest.TestCase):
         self.assertIn('account-password-not-hittable', sync)
         self.assertIn('XCTAssertFalse(app.buttons["account.submit"].isEnabled)', sync)
         self.assertIn('app.textFields["account.server"].typeText("http://invalid.example")', body)
-        self.assertIn('app.secureTextFields["pairing.authorization-code"].typeText("test-instance-code")', body)
+        self.assertIn('app.textFields["account.username"].typeText("test-user")', body)
+        self.assertIn('app.secureTextFields["account.password"].typeText("test-password")', body)
 
 
 class UIScrollProbeTests(unittest.TestCase):
     def test_missing_tiles_do_not_resolve_hittability_before_scrolling(self):
-        source = (args.root / 'clients/ios/XszcUITests/NavigationTests.swift').read_text()
+        source = (args.root / 'clients/ios/AnaUITests/NavigationTests.swift').read_text()
 
         class Tile:
             def __init__(self, exists, hittable):
@@ -172,7 +173,7 @@ class UIScrollProbeTests(unittest.TestCase):
 class CatalogLifecycleTests(unittest.TestCase):
     def test_whole_scan_and_patch_use_same_store_lock(self):
         source = IOS.read_text()
-        store = (args.root / 'clients/ios/Xszc/TransferStore.swift').read_text()
+        store = (args.root / 'clients/ios/Ana/TransferStore.swift').read_text()
         session = block(store, 'func withCatalogMutation<T>')
         self.assertLess(session.index('catalogMutationLock.lock()'), session.index('Task.checkCancellation()'))
         self.assertIn('defer { catalogMutationLock.unlock() }', session)

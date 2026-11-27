@@ -18,7 +18,7 @@ timed_phase() {
 }
 if [[ "$mode" != reset ]]; then
 # Use deterministic generated photos; no personal media enters test artifacts.
-fixture_dir="${RUNNER_TEMP:?}/xszc-layout-photos"
+fixture_dir="${RUNNER_TEMP:?}/ana-layout-photos"
 mkdir -p "$fixture_dir"
 timed_phase generate-photos python3 - "$fixture_dir" <<'PY'
 from pathlib import Path
@@ -53,7 +53,7 @@ if [[ "$mode" != media ]]; then
 # Unit tests launch the host app first, and XCTest can deny its startup prompt.
 # Reset that prior decision so UI tests exercise the real first-use prompt.
 # Do not pre-grant permission: the UI test must tap Allow Full Access itself.
-if xcrun simctl get_app_container "$simulator_udid" org.sarmg.xszc app >/dev/null 2>&1; then
-  timed_phase reset-photos-privacy xcrun simctl privacy "$simulator_udid" reset photos org.sarmg.xszc
+if xcrun simctl get_app_container "$simulator_udid" org.sarmg.ana app >/dev/null 2>&1; then
+  timed_phase reset-photos-privacy xcrun simctl privacy "$simulator_udid" reset photos org.sarmg.ana
 fi
 fi

@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Xszc"
+rootProject.name = "Ana"
 include(":app")

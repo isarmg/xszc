@@ -7,7 +7,7 @@ __pycache__/
 /server-data/
 /server.log
 /server.pid
-.*.xszc.lock
+.*.ana.lock
 /reference-immich/
 /.clients/
 /.codex/
@@ -18,8 +18,8 @@ __pycache__/
 /clients/android/app/src/main/jniLibs/
 /clients/ios/Vendor/
 /clients/ios/DerivedData/
-/clients/ios/Xszc.xcodeproj/
-/clients/ios/Xszc/Info.plist
+/clients/ios/Ana.xcodeproj/
+/clients/ios/Ana/Info.plist
 /clients/web/node_modules/
 /clients/web/dist/
 *.xcuserstate

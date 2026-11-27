@@ -9,7 +9,7 @@ spec = importlib.util.spec_from_file_location('release_ci', ROOT / 'scripts/chec
 ci = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci)
 SHA = 'a' * 40
-REPO = 'sarmg/xszc'
+REPO = 'sarmg/ana'
 
 
 def run(run_id=10, **changes):
@@ -45,7 +45,7 @@ class ReleaseCITests(unittest.TestCase):
 
     def test_no_run_wrong_sha_pr_and_foreign_repository_fail(self):
         for candidate in ([], [run(head_sha='b' * 40)], [run(event='pull_request')],
-                          [run(head_repository={'full_name': 'fork/xszc'})]):
+                          [run(head_repository={'full_name': 'fork/ana'})]):
             with self.subTest(candidate=candidate), self.assertRaises(ValueError):
                 self.check(runs=candidate)
 

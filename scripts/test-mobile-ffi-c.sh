@@ -4,12 +4,12 @@ ulimit -c 0
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project_dir"
 python3 scripts/check-mobile-header.py
-CARGO_INCREMENTAL=0 cargo build --locked -p xszc-mobile
+CARGO_INCREMENTAL=0 cargo build --locked -p ana-mobile
 target_dir="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 scratch="$(mktemp -d)"
 trap 'rm -rf -- "$scratch"' EXIT
 cc -std=c17 -Wall -Wextra -Werror -I crates/mobile-ffi/include \
-  crates/mobile-ffi/tests/abi.c -L "$target_dir/debug" -lxszc_mobile \
+  crates/mobile-ffi/tests/abi.c -L "$target_dir/debug" -lana_mobile \
   -Wl,-rpath,"$target_dir/debug" -o "$scratch/abi"
 scratch="$(cd "$scratch" && pwd -P)"
 if [[ "$(uname -s)" == Darwin ]]; then
@@ -21,18 +21,18 @@ if [[ "$(uname -s)" == Darwin ]]; then
 (allow default)
 (deny file-read* (literal "$scratch"))
 EOF
-  cargo build --locked -p xszc-core --example sandbox_database
+  cargo build --locked -p ana-core --example sandbox_database
   sandbox-exec -f "$scratch/test.sb" "$target_dir/debug/examples/sandbox_database" "$scratch/core-container"
   sandbox-exec -f "$scratch/test.sb" "$scratch/abi" "$scratch/ffi-container"
 else
   "$scratch/abi" "$scratch"
 fi
 if [[ "$(uname -s)" == Darwin ]]; then
-  symbols="$(nm -gU "$target_dir/debug/libxszc_mobile.dylib")"
+  symbols="$(nm -gU "$target_dir/debug/libana_mobile.dylib")"
 else
-  symbols="$(nm -D --defined-only "$target_dir/debug/libxszc_mobile.so")"
+  symbols="$(nm -D --defined-only "$target_dir/debug/libana_mobile.so")"
 fi
-if grep -E 'xszc_v0_2_r1|xcsc_ffi_.*_v[2-9]|panicProbe' <<< "$symbols"; then
+if grep -E 'ana_v0_2_r1|xcsc_ffi_.*_v[2-9]|panicProbe' <<< "$symbols"; then
   echo "removed FFI symbols remain" >&2
   exit 1
 fi

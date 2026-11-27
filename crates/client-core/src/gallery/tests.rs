@@ -22,6 +22,49 @@ fn asset(id: Uuid, favorite: bool) -> Value {
 fn event(sequence: i64, id: Uuid) -> Value {
     json!({"sequence":sequence,"entity_kind":"asset","entity_id":id,"operation":"upsert","changed_at_ms":1})
 }
+
+#[test]
+fn cached_page_returns_saved_order_and_optional_content_hashes() {
+    let root = tempfile::tempdir().unwrap();
+    let client = open(&root.path().join("client.sqlite"));
+    let first = Uuid::from_u128(3);
+    let missing = Uuid::from_u128(2);
+    let last = Uuid::from_u128(1);
+    let resource = json!({"resource_id":Uuid::from_u128(4),"role":"primary","filename":"photo.jpg",
+        "mime_type":"image/jpeg","content_size":5,"storage_encoding":"plain-v1","metadata":null,
+        "manifest_path":"/v1/resources/fixture/manifest","content_path":"/v1/resources/fixture/content"});
+    let mut before_hash = asset(first, false);
+    before_hash["resources"] = json!([resource]);
+    let mut with_hash = asset(last, false);
+    let mut resource_with_hash = resource;
+    resource_with_hash["content_blake3"] = json!("a".repeat(64));
+    with_hash["resources"] = json!([resource_with_hash]);
+    call(
+        &client,
+        json!({"op":"save_page","query_key":"photos","cursor":null,"next_cursor":"next",
+        "items":[before_hash,asset(missing,false),with_hash,before_hash]}),
+    )
+    .unwrap();
+    client
+        .lock_connection()
+        .unwrap()
+        .execute(
+            "DELETE FROM gallery_assets WHERE asset_id = ?1",
+            params![missing.to_string()],
+        )
+        .unwrap();
+
+    let page = call(
+        &client,
+        json!({"op":"read_page","query_key":"photos","cursor":null}),
+    )
+    .unwrap();
+    assert_eq!(
+        page,
+        json!({"items":[before_hash,with_hash,before_hash],"next_cursor":"next"})
+    );
+}
+
 #[test]
 fn snapshot_and_event_application_are_atomic_and_restartable() {
     let root = tempfile::tempdir().unwrap();

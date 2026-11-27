@@ -1,6 +1,6 @@
 # 客户端功能索引
 
-本页索引 xszc 当前源码候选 1.0.0 的实际移动功能。详细使用步骤见[日常使用](usage.md)，实现预算和验收场景见[备份与图库参考](manual-backup-implementation.md)。
+本页索引 ana 当前源码候选 1.0.0 的实际移动功能。详细使用步骤见[日常使用](usage.md)，实现预算和验收场景见[备份与图库参考](manual-backup-implementation.md)。
 
 | 功能 | 使用入口 | 主要实现 |
 |---|---|---|
@@ -23,4 +23,4 @@
 - 浏览缓存可重建，上传分块与队列属于待传状态，分别管理。
 - 当前功能集中于备份和图库，没有人脸识别、AI 分类、共享相册或复杂编辑。
 
-服务端配额、对象存储、管理账户与部署由 [xszs](https://github.com/isarmg/xszs/tree/main/docs)负责。
+服务端配额、对象存储、管理账户与部署由 [ana-server](https://github.com/isarmg/xszs/tree/main/docs)负责。

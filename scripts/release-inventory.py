@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Bind the actual release runtime graph to its final staged native files."""
 import argparse
+from contextlib import ExitStack, contextmanager
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -15,7 +15,6 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-TOOLS_REPOSITORY = 'https://github.com/isarmg/xssi.git'
 
 
 def clean_environment():
@@ -28,30 +27,33 @@ def run(command, cwd, environment):
                                    stdin=subprocess.DEVNULL, timeout=1800).decode().strip()
 
 
-def tools_identity():
-    identity = json.loads((ROOT / 'build-tools-source.json').read_text(encoding='utf-8'))
-    if set(identity) != {'repository', 'revision'} or identity['repository'] != TOOLS_REPOSITORY or not isinstance(identity['revision'], str) or not re.fullmatch('[0-9a-f]{40}', identity['revision']):
-        raise ValueError('release build tools require their exact official Git revision')
-    return identity
+@contextmanager
+def release_tools(source=ROOT):
+    directory = source / 'tools/release-support'
+    scripts = directory / 'scripts'
+    names = sorted(path.stem for path in scripts.glob('*.py'))
+    if not names:
+        raise ValueError('release support scripts are missing from the product source')
+    previous_modules = {name: sys.modules.pop(name) for name in names if name in sys.modules}
+    previous_path = sys.path[:]
+    previous_bytecode = sys.dont_write_bytecode
+    sys.path.insert(0, str(scripts))
+    sys.dont_write_bytecode = True
+    try:
+        yield directory
+    finally:
+        sys.path[:] = previous_path
+        sys.dont_write_bytecode = previous_bytecode
+        for name in names:
+            sys.modules.pop(name, None)
+        sys.modules.update(previous_modules)
 
 
-def checkout_tools(destination, environment):
-    identity = tools_identity()
-    run(['git', 'init', '--quiet', str(destination)], ROOT, environment)
-    run(['git', 'remote', 'add', 'origin', identity['repository']], destination, environment)
-    run(['git', '-c', 'credential.helper=', '-c', 'core.hooksPath=/dev/null',
-         'fetch', '--depth=1', 'origin', identity['revision']], destination, environment)
-    run(['git', '-c', 'core.hooksPath=/dev/null', 'checkout', '--quiet', '--detach', 'FETCH_HEAD'], destination, environment)
-    if run(['git', 'rev-parse', 'HEAD'], destination, environment) != identity['revision']:
-        raise ValueError('release tools checkout differs from its immutable source')
-    return destination
-
-
-def exported_source(destination, revision, environment):
+def exported_source(destination, revision, environment, paths=()):
     if not re.fullmatch('[0-9a-f]{40}', revision) or run(['git', 'rev-parse', 'HEAD'], ROOT, environment) != revision or run(['git', 'status', '--porcelain', '--untracked-files=all'], ROOT, environment):
         raise ValueError('runtime inventory requires the exact clean compiled source')
     archive = destination.parent / 'source.tar'
-    run(['git', '-c', 'core.autocrlf=false', 'archive', '--format=tar', '--output', str(archive), revision], ROOT, environment)
+    run(['git', '-c', 'core.autocrlf=false', 'archive', '--format=tar', '--output', str(archive), revision, *paths], ROOT, environment)
     destination.mkdir(mode=0o700)
     with tarfile.open(archive) as source:
         for entry in source:
@@ -63,15 +65,13 @@ def exported_source(destination, revision, environment):
     return destination
 
 
-def load_tool(name, directory):
-    spec = importlib.util.spec_from_file_location('xssi_release_' + name, directory / 'scripts' / (name + '.py'))
-    module = importlib.util.module_from_spec(spec)
-    sys.path.insert(0, str(directory / 'scripts'))
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        sys.path.pop(0)
-    return module
+@contextmanager
+def exported_release_tools(revision, environment):
+    with tempfile.TemporaryDirectory(prefix='ana-release-support-') as temporary:
+        destination = Path(temporary).resolve(strict=True) / 'source'
+        source = exported_source(destination, revision, environment, ('tools/release-support',))
+        with release_tools(source) as tools:
+            yield tools
 
 
 def file_binding(stage, value):
@@ -104,12 +104,12 @@ def generate(stage, *, product, version, revision, target, root_name,
     environment = clean_environment()
     (stage / 'share').mkdir(mode=0o755, exist_ok=True)
     (stage / 'share').chmod(0o755)
-    with tempfile.TemporaryDirectory(prefix=product + '-release-inventory-') as temporary:
+    with tempfile.TemporaryDirectory(prefix=product + '-release-inventory-') as temporary, ExitStack() as tools:
         private = Path(temporary).resolve(strict=True)
-        tools = checkout_tools(private / 'tools', environment)
         source = exported_source(private / 'source', revision, environment)
-        producer = load_tool('sbom', tools)
-        finalizer = load_tool('release_sbom', tools)
+        tools.enter_context(release_tools(source))
+        import sbom as producer
+        import release_sbom as finalizer
         manifest = PurePosixPath(manifest_relative)
         if manifest.is_absolute() or str(manifest) != manifest_relative or '..' in manifest.parts or '\\' in manifest_relative:
             raise ValueError('release Cargo manifest must be within the exported source')
@@ -121,7 +121,7 @@ def generate(stage, *, product, version, revision, target, root_name,
         all_components=list(components)
         normalized=json.loads(bom.read_text(encoding='utf-8'))
         if any(item.get('name')=='libsqlite3-sys' for item in normalized.get('components',[])):
-            native=load_tool('sqlite_receipt',tools)
+            import sqlite_receipt as native
             all_components.append(native.record(source,stage,'runtime',files=runtime_bindings,
                                                 inventory_relative=inventory_relative))
         destination=PurePosixPath(inventory_relative)

@@ -10,7 +10,7 @@ use std::{
     sync::OnceLock,
 };
 
-pub(super) const NAME: &str = "xszc-container-v1";
+pub(super) const NAME: &str = "ana-container-v1";
 type OpenCallback = unsafe extern "C" fn(
     *mut ffi::sqlite3_vfs,
     *const c_char,
@@ -34,7 +34,7 @@ pub(super) fn register() -> Result<(), sqlx::Error> {
             let _ = ORIGINAL_OPEN.set(open);
             let mut vfs = Box::new(*original);
             vfs.xOpen = Some(open_nofollow);
-            vfs.zName = c"xszc-container-v1".as_ptr();
+            vfs.zName = c"ana-container-v1".as_ptr();
             vfs.pNext = std::ptr::null_mut();
             vfs.xFullPathname = Some(full_pathname);
             let pointer = Box::into_raw(vfs);

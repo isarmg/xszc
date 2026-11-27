@@ -10,7 +10,7 @@ use ffi::jni::{guard, new_string, read_string};
 // the Android/iOS release commands, which do not enable jni-host-tests.
 #[cfg(feature = "jni-host-tests")]
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_panicProbe(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_panicProbe(
     mut env: EnvUnowned,
     _class: JClass,
 ) -> jint {
@@ -18,14 +18,14 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_panicProbe(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_abiRevision(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_abiRevision(
     mut env: EnvUnowned,
     _class: JClass,
 ) -> jint {
     guard(&mut env, 0, |_| Ok(ffi::ABI_REVISION as jint))
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_open(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_open(
     mut env: EnvUnowned,
     _class: JClass,
     path: JString,
@@ -38,7 +38,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_open(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_close(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_close(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -46,7 +46,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_close(
     guard(&mut env, (), |_| close_impl(handle as u64))
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_needs(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_needs(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -64,7 +64,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_needs(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_needsWithSize(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_needsWithSize(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -84,7 +84,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_needsWithSize(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_verifyFileBlake3(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_verifyFileBlake3(
     mut env: EnvUnowned,
     _class: JClass,
     path: JString,
@@ -100,7 +100,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_verifyFileBlake3(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_enqueue(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_enqueue(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -112,7 +112,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_enqueue(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_next(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_next(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -124,7 +124,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_next(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_markUpload(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_markUpload(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -141,7 +141,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_markUpload(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_markPart(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_markPart(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -158,7 +158,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_markPart(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_markComplete(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_markComplete(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -171,7 +171,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_markComplete(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_markFailed(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_markFailed(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -189,7 +189,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_markFailed(
     })
 }
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_stats(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_stats(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,
@@ -200,7 +200,7 @@ pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_stats(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_org_sarmg_xszc_NativeBridgeV1_transfer(
+pub extern "system" fn Java_org_sarmg_ana_NativeBridgeV1_transfer(
     mut env: EnvUnowned,
     _class: JClass,
     handle: jlong,

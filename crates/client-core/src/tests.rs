@@ -80,7 +80,7 @@ fn interrupted_database_operation_requires_reopen_without_further_writes() {
 
 #[test]
 fn prepared_job_contains_original_plaintext_parts() {
-    let root = std::env::temp_dir().join(format!("xszc-{}", Uuid::new_v4()));
+    let root = std::env::temp_dir().join(format!("ana-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let source = root.join("photo.jpg");
     let original = b"server storage must contain these exact original bytes";
@@ -248,7 +248,7 @@ fn noncurrent_schema_database_is_rejected_and_preserves_every_row() {
         .execute_batch(include_str!("../tests/fixtures/mobile-db-v1.sql"))
         .unwrap();
     connection.execute_batch(
-            "INSERT INTO product_metadata VALUES (1, 'xszc', '1.0.0', 1,
+            "INSERT INTO product_metadata VALUES (1, 'ana', '1.0.0', 1,
                 '87eb55ba9366cd06d5a2e0b69b5fd4c7a6eef59c381e9fd4ea340e9e04ef6dfb');
              INSERT INTO jobs (id,source_asset_id,source_resource_id,media_kind,role,file_path,
                 filename,mime_type,source_created_at_ms,modified_ms,source_size,state,

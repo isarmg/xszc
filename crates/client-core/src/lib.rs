@@ -11,6 +11,9 @@ mod transfers;
 pub use gallery::GalleryCommand;
 pub use transfers::{TransferCommand, TransferRequest};
 
+use ana_crypto::prepare_file;
+pub use ana_protocol::UPLOAD_OPERATION_HEADER;
+use ana_protocol::{parse_upload_operation, CreateUploadRequest, MediaKind, StorageEncoding};
 use database::connection::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -19,9 +22,6 @@ use xcsc::fs_safety::{
     bounded_directory_inventory, sync_directory, sync_file_and_parent, InventoryLimits,
     PrivateDirectory, RelativePath,
 };
-use xszc_crypto::prepare_file;
-pub use xszs_protocol::UPLOAD_OPERATION_HEADER;
-use xszs_protocol::{parse_upload_operation, CreateUploadRequest, MediaKind, StorageEncoding};
 
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -30,7 +30,7 @@ pub enum ClientError {
     #[error("serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
     #[error("content preparation error: {0}")]
-    Content(#[from] xszc_crypto::ContentError),
+    Content(#[from] ana_crypto::ContentError),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("client database is not exactly current: {0}")]
@@ -59,10 +59,10 @@ impl ClientError {
     }
 }
 
-pub const MOBILE_PRODUCT: &str = "xszc";
+pub const MOBILE_PRODUCT: &str = "ana";
 pub const MOBILE_APPLICATION_VERSION: &str = "1.0.0";
 pub const MOBILE_REVISION: u32 = 1;
-pub const MOBILE_STATE_EPOCH: &str = "xszc-mobile-v1";
+pub const MOBILE_STATE_EPOCH: &str = "ana-mobile-v1";
 pub const MOBILE_DATABASE_FILENAME: &str = "client-v1.sqlite";
 pub const MOBILE_STAGING_DIRECTORY: &str = "backup-staging-v1";
 
@@ -84,7 +84,7 @@ impl ClientConfig {
             self.revision,
             &self.state_epoch,
         )?;
-        if self.part_size == 0 || self.part_size > xszc_crypto::MAX_PART_BYTES {
+        if self.part_size == 0 || self.part_size > ana_crypto::MAX_PART_BYTES {
             return Err(ClientError::InvalidContract(
                 "part_size must be between 1 byte and 64 MiB".to_owned(),
             ));

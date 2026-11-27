@@ -42,7 +42,7 @@ class SimulatorTests(unittest.TestCase):
              patch.object(simulator.subprocess, 'check_output', return_value=json.dumps(devices).encode()), \
              patch.object(simulator.subprocess, 'Popen') as launch:
             self.assertEqual(simulator.main(), 0)
-        self.assertEqual(env.read_text(), 'XSZC_TEST_SIMULATOR=same-device\n')
+        self.assertEqual(env.read_text(), 'ANA_TEST_SIMULATOR=same-device\n')
         self.assertEqual(launch.call_args.args[0][-2:], ['boot', 'same-device'])
         self.assertTrue(launch.call_args.kwargs['start_new_session'])
         self.assertEqual(launch.call_args.kwargs['stdin'], subprocess.DEVNULL)
@@ -100,7 +100,7 @@ class SimulatorTests(unittest.TestCase):
         run.assert_not_called()
 
     def test_wait_command_preserves_boot_failure_status(self):
-        with patch.dict(simulator.os.environ, {'RUNNER_TEMP': self.temporary.name, 'XSZC_TEST_SIMULATOR': 'same-device'}), \
+        with patch.dict(simulator.os.environ, {'RUNNER_TEMP': self.temporary.name, 'ANA_TEST_SIMULATOR': 'same-device'}), \
              patch.object(simulator.sys, 'argv', ['helper', 'wait']), \
              patch.object(simulator, 'wait', side_effect=subprocess.CalledProcessError(7, ['boot'])):
             self.assertEqual(simulator.main(), 7)

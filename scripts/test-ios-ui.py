@@ -16,21 +16,21 @@ PHOTO_IMPORT_TIMEOUT = 120
 
 def main():
     simulator, result_bundle = sys.argv[1:]
-    fixture_dir = Path(os.environ["RUNNER_TEMP"]) / "xszc-layout-photos"
+    fixture_dir = Path(os.environ["RUNNER_TEMP"]) / "ana-layout-photos"
     refreshed_photo = fixture_dir / "layout-auto-refresh.png"
     shutil.copyfile(fixture_dir / "layout-photo-1.png", refreshed_photo)
     command = [
-        "xcodebuild", "-project", "clients/ios/Xszc.xcodeproj",
-        "-scheme", "Xszc", "-sdk", "iphonesimulator",
+        "xcodebuild", "-project", "clients/ios/Ana.xcodeproj",
+        "-scheme", "Ana", "-sdk", "iphonesimulator",
         "-destination", f"id={simulator}",
         "-derivedDataPath", "clients/ios/DerivedData",
-        "-only-testing:XszcUITests", "-resultBundlePath", result_bundle,
+        "-only-testing:AnaUITests", "-resultBundlePath", result_bundle,
         "-collect-test-diagnostics", "never", "-parallel-testing-enabled", "NO", "test-without-building",
     ]
-    live_path = Path(os.environ["RUNNER_TEMP"]) / "xszc-ios-live.log"
+    live_path = Path(os.environ["RUNNER_TEMP"]) / "ana-ios-live.log"
     with live_path.open("w") as live_output, subprocess.Popen([
         "xcrun", "simctl", "spawn", simulator, "log", "stream", "--level", "debug",
-        "--style", "compact", "--predicate", 'subsystem == "org.sarmg.xszc"',
+        "--style", "compact", "--predicate", 'subsystem == "org.sarmg.ana"',
     ], stdout=live_output, stderr=subprocess.STDOUT) as live:
         try:
             return run_tests(command, simulator, refreshed_photo)
@@ -63,7 +63,7 @@ def run_tests(command, simulator, refreshed_photo):
         try:
             for line in test.stdout:
                 print(line, end="", flush=True)
-                if line.strip() == "XSZC_UI_READY_FOR_PHOTO_CHANGE" and imported is None:
+                if line.strip() == "ANA_UI_READY_FOR_PHOTO_CHANGE" and imported is None:
                     # Keep draining XCTest output while PhotoKit imports the fixture.
                     imported = imports.submit(import_photo)
             if imported is not None:

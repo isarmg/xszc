@@ -1,6 +1,6 @@
 # 移动协议与状态身份
 
-本页面向修改 Rust 核心或平台宿主的开发者。线上 DTO 从 Cargo 固定的 xszs protocol Git revision 获取；账户管理、管理 Web 与服务端存储实现见 [xszs 文档](https://github.com/isarmg/xszs/tree/main/docs)。
+本页面向修改 Rust 核心或平台宿主的开发者。线上 DTO 来自仓库内的 `crates/protocol/`；账户管理、管理 Web 与服务端存储实现见 [ana-server 文档](https://github.com/isarmg/xszs/tree/main/docs)。
 
 ## 身份
 
@@ -9,7 +9,7 @@
 | 软件候选版 | `1.0.0`，根 `VERSION` |
 | 移动应用/数据库合同版本 | `1.0.0` |
 | 移动 revision / 数据库 revision | `1` / `1` |
-| 移动 epoch | `xszc-mobile-v1` |
+| 移动 epoch | `ana-mobile-v1` |
 | C/JNI ABI | `1` |
 | 移动 HTTP 路径前缀 | `/v1` |
 | 存储编码 | `plain-v1` |
@@ -20,7 +20,7 @@ TLS 保护传输；服务端保存原始媒体字节，服务器和数据卷管�
 
 ## 登录与请求
 
-`/v1/auth/bootstrap` 使用实例 `authorization_code`、`device_name` 和 `platform` 换取设备 Bearer Token。管理员轮换授权码后旧设备 Token 失效。设备使用实例凭据；管理 Cookie、API Key 和监控凭据有各自用途。
+`POST /v1/auth/login` 使用 `username`、`password`、`device_name`、`platform` 和可选 `device_id` 换取属于该账号的设备 Bearer Token。已有设备可以在重新登录时复用设备 ID。管理员重设密码后，设备须重新登录。
 
 鉴权资源请求保持同源 HTTPS，禁止携带 Token 跟随重定向；视频请求同样遵循该规则。错误依据稳定 `code`、HTTP 状态和 `retryable` 分支，`request_id` 是可选诊断字段，所有上传阶段的临时失败依据 `Retry-After` 秒数或 HTTP 日期等待，下限持久化到队列并在重启后保留；永久拒绝停留为失败，自动扫描与自动入队均不能清除该标记，仅手动修正后通过批次重试或重新选择恢复。准备失败缺失暂存片仍可由新导出修复。409 `upload_superseded` 独立终止旧版本任务。
 

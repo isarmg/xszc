@@ -1,6 +1,6 @@
 use super::*;
+use ana_protocol::{AssetSummary, SyncEvent};
 use serde_json::{json, Value};
-use xszs_protocol::{AssetSummary, SyncEvent};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
@@ -180,7 +180,7 @@ impl Client {
                 let sql = format!("{} WHERE {} ORDER BY c.created_ms DESC,c.source_id LIMIT ?4 OFFSET ?5", query.detail_select, query.filter);
                 let mut q = tx.prepare(sqlx::AssertSqlSafe(sql))?;
                 let rows = q.query_map(params![album,media_kind,unbacked,limit.clamp(1,1000),offset],local_row)?.collect::<Result<Vec<_>,_>>()?;
-                json!(rows)
+                Value::Array(rows)
             }
             GalleryCommand::LocalIndex {album,media_kind,unbacked}=>{
                 let query = LocalQuery::new();
@@ -190,7 +190,7 @@ impl Client {
                     "source_id":r.get::<_,String>(0)?,"name":r.get::<_,String>(1)?,
                     "media_kind":r.get::<_,String>(2)?,"created_ms":r.get::<_,i64>(3)?,"modified_ms":r.get::<_,i64>(4)?
                 })))?.collect::<Result<Vec<_>,_>>()?;
-                json!(rows)
+                Value::Array(rows)
             }
             GalleryCommand::LocalItems {source_ids}=>{
                 if source_ids.len()>1000{return Err(ClientError::InvalidContract("visible item batch exceeds 1000".into()));}
@@ -198,7 +198,7 @@ impl Client {
                 let sql = format!("{} WHERE c.available IN (1,3) AND c.source_id IN (SELECT value FROM json_each(?1)) ORDER BY c.created_ms DESC,c.source_id",query.detail_select);
                 let mut q = tx.prepare(sqlx::AssertSqlSafe(sql))?;
                 let rows = q.query_map(params![serde_json::to_string(&source_ids)?],local_row)?.collect::<Result<Vec<_>,_>>()?;
-                json!(rows)
+                Value::Array(rows)
             }
             GalleryCommand::PatchCatalog {items,removed_source_ids}=>{
                 if items.len()+removed_source_ids.len()>1000{return Err(ClientError::InvalidContract("catalog change batch exceeds 1000".into()));}
@@ -257,9 +257,24 @@ impl Client {
             }
             GalleryCommand::ReadPage {query_key,cursor}=>{
                 let page:Option<(Option<String>,String)>=tx.query_row("SELECT next_cursor,asset_ids FROM gallery_pages WHERE query_key=?1 AND cursor=?2",params![query_key,cursor.unwrap_or_default()],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
-                if let Some((next,ids))=page{let mut items=Vec::new();for id in serde_json::from_str::<Vec<String>>(&ids)? {
-                    if let Some(summary)=tx.query_row("SELECT summary FROM gallery_assets WHERE asset_id=?1",params![id],|r|r.get::<_,String>(0)).optional()?{items.push(serde_json::from_str::<Value>(&summary)?);}
-                }json!({"items":items,"next_cursor":next})}else{Value::Null}
+                if let Some((next, ids)) = page {
+                    // Reject malformed cached page order just as before. Join the ordered JSON
+                    // array in SQLite so each existing asset requires no separate worker request.
+                    serde_json::from_str::<Vec<String>>(&ids)?;
+                    let mut query = tx.prepare(
+                        "SELECT asset.summary FROM json_each(?1) AS item
+                         JOIN gallery_assets AS asset ON asset.asset_id = item.value ORDER BY item.key",
+                    )?;
+                    let items = query.query_map(params![ids], |row| row.get::<_, String>(0))?
+                        .map(|summary| Ok(serde_json::from_str::<Value>(&summary?)?))
+                        .collect::<Result<Vec<_>, ClientError>>()?;
+                    Value::Object(serde_json::Map::from_iter([
+                        ("items".into(), Value::Array(items)),
+                        ("next_cursor".into(), next.map_or(Value::Null, Value::String)),
+                    ]))
+                } else {
+                    Value::Null
+                }
             }
         };
         tx.commit()?;

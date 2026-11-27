@@ -54,8 +54,8 @@ def wait(udid, status):
 
 def main():
     root = Path(os.environ['RUNNER_TEMP'])
-    status = root / 'xszc-simulator-boot.json'
-    log = root / 'xszc-simulator-boot.log'
+    status = root / 'ana-simulator-boot.json'
+    log = root / 'ana-simulator-boot.log'
     if sys.argv[1] == 'boot':
         return boot(sys.argv[2], status)
     if sys.argv[1] == 'start':
@@ -66,7 +66,7 @@ def main():
         print(f'Selected {udid} in {time.monotonic() - started:.1f}s', flush=True)
         status.unlink(missing_ok=True)
         with open(os.environ['GITHUB_ENV'], 'a') as env:
-            env.write(f'XSZC_TEST_SIMULATOR={udid}\n')
+            env.write(f'ANA_TEST_SIMULATOR={udid}\n')
         with log.open('w') as output:
             subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'boot', udid],
                              stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
@@ -74,7 +74,7 @@ def main():
         return 0
     if sys.argv[1] == 'wait':
         try:
-            wait(os.environ['XSZC_TEST_SIMULATOR'], status)
+            wait(os.environ['ANA_TEST_SIMULATOR'], status)
         except subprocess.CalledProcessError as error:
             return error.returncode
         finally:

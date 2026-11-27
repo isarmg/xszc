@@ -30,8 +30,8 @@ def block(source, marker):
 class Contract:
     def __init__(self, platform):
         self.platform = platform
-        path = args.root / ('clients/ios/Xszc/CloudGalleryScreen.swift' if platform == 'ios'
-                           else 'clients/android/app/src/main/java/org/sarmg/xszc/CloudGalleryScreen.kt')
+        path = args.root / ('clients/ios/Ana/CloudGalleryScreen.swift' if platform == 'ios'
+                           else 'clients/android/app/src/main/java/org/sarmg/ana/CloudGalleryScreen.kt')
         if args.before_dir:
             path = args.before_dir / f'before-{platform}.{"swift" if platform == "ios" else "kt"}'
         self.source = path.read_text()
@@ -45,14 +45,13 @@ class Contract:
         else:
             view = block(self.source, 'internal fun RemoteImage(')
             self.view = view
-            guard = re.search(r'if \((.*?)\) asset.resources.firstOrNull \{ it.role == "thumbnail" \}\?\.let', view)
+            guard = re.search(r'if \((.*?)\) (?:thumbnail|asset.resources.firstOrNull \{ it.role == "thumbnail" \})\?\.let', view)
             assert guard, 'Missing progressive-thumbnail guard'
             self.progressive_guard = guard.group(1)
             assert 'if (resource != null && api != null)' in view
             assert 'asset.resources.firstOrNull { it.role != "thumbnail" }' in view
             assert 'if (preview && asset.mediaKind != "video") asset.resources.firstOrNull { it.role == "primary" }' in view
-            # Select the .let body, not the preceding firstOrNull predicate.
-            self.thumbnail = block(view, '}?.let')
+            self.thumbnail = block(view, 'thumbnail?.let' if 'thumbnail?.let' in view else '}?.let')
             assert view.index('profile, resource, preview)') > view.index(self.thumbnail) + len(self.thumbnail)
             self.condition = None
 

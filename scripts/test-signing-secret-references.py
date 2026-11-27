@@ -19,10 +19,10 @@ class SigningSecretReferenceTests(unittest.TestCase):
     def workflow(self, extra: str = "") -> str:
         return (
             "env:\n"
-            "  XSZC_ANDROID_SIGNING_PKCS12_BASE64: "
-            "${{ secrets.XSZC_ANDROID_SIGNING_PKCS12_BASE64 }}\n"
-            "  XSZC_ANDROID_SIGNING_PKCS12_PASSWORD: "
-            "${{ secrets.XSZC_ANDROID_SIGNING_PKCS12_PASSWORD }}\n"
+            "  ANA_ANDROID_SIGNING_PKCS12_BASE64: "
+            "${{ secrets.ANA_ANDROID_SIGNING_PKCS12_BASE64 }}\n"
+            "  ANA_ANDROID_SIGNING_PKCS12_PASSWORD: "
+            "${{ secrets.ANA_ANDROID_SIGNING_PKCS12_PASSWORD }}\n"
             + extra
         )
 
@@ -30,7 +30,7 @@ class SigningSecretReferenceTests(unittest.TestCase):
         self.assertEqual(checker.validate(self.workflow()), checker.ALLOWED_SECRETS)
         self.assertEqual(
             checker.validate(
-                self.workflow("  PASSWORD: ${{ secrets.XSZC_ANDROID_SIGNING_PKCS12_PASSWORD }}\n")
+                self.workflow("  PASSWORD: ${{ secrets.ANA_ANDROID_SIGNING_PKCS12_PASSWORD }}\n")
             ),
             checker.ALLOWED_SECRETS,
         )
@@ -46,7 +46,7 @@ class SigningSecretReferenceTests(unittest.TestCase):
 
     def test_rejects_bracket_dynamic_and_whole_context_bindings(self):
         for expression in (
-            "${{ secrets['XSZC_ANDROID_SIGNING_PKCS12_PASSWORD'] }}",
+            "${{ secrets['ANA_ANDROID_SIGNING_PKCS12_PASSWORD'] }}",
             "${{ secrets[env.SIGNING_SECRET_NAME] }}",
             "${{ toJSON(secrets) }}",
             "${{ secrets.* }}",
@@ -57,7 +57,7 @@ class SigningSecretReferenceTests(unittest.TestCase):
     def test_requires_platform_canonical_bindings(self):
         for text in (
             "env: {}\n",
-            "env:\n  PASSWORD: ${{ secrets.XSZC_ANDROID_SIGNING_PKCS12_PASSWORD }}\n",
+            "env:\n  PASSWORD: ${{ secrets.ANA_ANDROID_SIGNING_PKCS12_PASSWORD }}\n",
         ):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 checker.validate(text)

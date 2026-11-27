@@ -1,13 +1,13 @@
 # Android 正式签名
 
-应用 ID 为 `org.sarmg.xszc`，PKCS#12 别名为 `xszc-android-release`。
+应用 ID 为 `org.sarmg.ana`，PKCS#12 别名为 `ana-android-release`。
 当前发布证书 SHA-256 为 `0cfc2811d48cdeab3e6d857029d879e001ab9531c06784b4d48d15a847771421`。
 正式 APK 使用这一固定签名身份；Debug APK 仅用于开发验证。
 
-GitHub 仓库 `isarmg/xszc` 的 `android-signing` 环境保存两个秘密配置：
+GitHub 仓库 `isarmg/ana` 的 `android-signing` 环境保存两个秘密配置：
 
-- `XSZC_ANDROID_SIGNING_PKCS12_BASE64`
-- `XSZC_ANDROID_SIGNING_PKCS12_PASSWORD`
+- `ANA_ANDROID_SIGNING_PKCS12_BASE64`
+- `ANA_ANDROID_SIGNING_PKCS12_PASSWORD`
 
 签名环境仅允许审定的发行标签；具体规则以 GitHub 环境配置为准。发布前需核对对应提交、发布工作流和标签准入，不放行任意分支或 pull request。
 私钥和密码不进入 Git、Release 附件或构建日志；发布任务只在临时目录生成权限受限的签名输入。
@@ -17,4 +17,4 @@ Release 工作流在 Rust/合同校验、Android JVM 测试与签名构建、iOS
 
 签名私钥另有受限权限的离线备份。仓库管理员应将备份转存至自己的加密存储并妥善保存密码；GitHub 秘密配置不能作为唯一可恢复备份。
 
-更名只调整 PKCS#12 条目别名和环境秘密键名；沿用同一证书、同一私钥和同一密码，证书 SHA-256 不变。工作流使用上述 `XSZC_ANDROID_SIGNING_*` 秘密，并在 APK 发布前验证唯一签名证书及固定指纹。
+更名只调整 PKCS#12 条目别名和环境秘密键名；沿用同一证书、同一私钥和同一密码，证书 SHA-256 不变。工作流使用上述 `ANA_ANDROID_SIGNING_*` 秘密，并在 APK 发布前验证唯一签名证书及固定指纹。

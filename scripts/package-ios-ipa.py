@@ -12,8 +12,8 @@ import zipfile
 
 
 def package(app: Path, output: Path, version: str) -> None:
-    if app.name != "Xszc.app" or app.is_symlink() or not app.is_dir():
-        raise ValueError("expected the built Xszc.app directory")
+    if app.name != "Ana.app" or app.is_symlink() or not app.is_dir():
+        raise ValueError("expected the built Ana.app directory")
     if output.suffix != ".ipa":
         raise ValueError("output must have the .ipa extension")
     app = app.resolve()
@@ -21,7 +21,7 @@ def package(app: Path, output: Path, version: str) -> None:
         raise ValueError("IPA output must be outside the app bundle")
     with (app / "Info.plist").open("rb") as stream:
         info = plistlib.load(stream)
-    if info.get("CFBundleIdentifier") != "org.sarmg.xszc":
+    if info.get("CFBundleIdentifier") != "org.sarmg.ana":
         raise ValueError("unexpected iOS application identity")
     if info.get("CFBundleShortVersionString") != version:
         raise ValueError("iOS application version does not match the release")
@@ -69,7 +69,7 @@ def package(app: Path, output: Path, version: str) -> None:
         with zipfile.ZipFile(temporary) as archive:
             if archive.testzip() is not None:
                 raise ValueError("IPA ZIP integrity check failed")
-            required = {"Payload/Xszc.app/Info.plist", f"Payload/Xszc.app/{executable}"}
+            required = {"Payload/Ana.app/Info.plist", f"Payload/Ana.app/{executable}"}
             if not required.issubset(archive.namelist()):
                 raise ValueError("IPA Payload is incomplete")
         os.replace(temporary, output)

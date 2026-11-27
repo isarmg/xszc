@@ -41,8 +41,7 @@ jobs:
       - run: python3 scripts/test-ios-toolchain-checks.py
       - run: ./scripts/check-workflow-supply-chain.sh
       - run: cargo fmt --all -- --check
-      - run: cargo check --workspace --locked
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - run: cargo test --workspace --locked
       - run: bash scripts/test-mobile-ffi-c.sh
 
@@ -90,24 +89,24 @@ jobs:
       - name: Verify actual Android release runtime sources before compiling
         run: |
           gradle -p clients/android -I "$PWD/scripts/export-android-runtime.gradle" \
-            "-PxssiRuntimeExport=$RUNNER_TEMP/xszc-android-runtime.json" :app:exportXssiRuntimeInventory
-          python3 scripts/check-android-runtime-inventory.py --export "$RUNNER_TEMP/xszc-android-runtime.json"
+            "-PxssiRuntimeExport=$RUNNER_TEMP/ana-android-runtime.json" :app:exportXssiRuntimeInventory
+          python3 scripts/check-android-runtime-inventory.py --export "$RUNNER_TEMP/ana-android-runtime.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: xszc-android-release-runtime-resolution
-          path: ${{ runner.temp }}/xszc-android-runtime.json
+          name: ana-android-release-runtime-resolution
+          path: ${{ runner.temp }}/ana-android-runtime.json
           if-no-files-found: warn
       - run: cargo install cargo-ndk --version 4.1.2 --locked
       - name: Build Rust Android library
         run: |
           export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/28.2.13676358"
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
-          cargo ndk -t arm64-v8a -o clients/android/app/src/main/jniLibs build -p xszc-mobile --release --locked
-      - run: gradle -p clients/android --build-cache -PxszcCiCompilationCache=true testDebugUnitTest assembleDebug assembleDebugAndroidTest
+          cargo ndk -t arm64-v8a -o clients/android/app/src/main/jniLibs build -p ana-mobile --release --locked
+      - run: gradle -p clients/android --build-cache -PanaCiCompilationCache=true testDebugUnitTest assembleDebug assembleDebugAndroidTest
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: xszc-android-debug
+          name: ana-android-debug
           path: clients/android/app/build/outputs/apk/debug/*.apk
 
       - name: Prepare Android 17 sandbox tests
@@ -116,18 +115,18 @@ jobs:
           sudo chown "$(id -un)" /dev/kvm
           export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/28.2.13676358"
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
-          cargo ndk -t x86_64 -o clients/android/app/src/main/jniLibs build -p xszc-mobile --release --locked
+          cargo ndk -t x86_64 -o clients/android/app/src/main/jniLibs build -p ana-mobile --release --locked
       - name: Test actual JNI backup on Android 17
         timeout-minutes: 18
         run: bash scripts/test-android-emulator.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: xszc-android17-test-results
+          name: ana-android17-test-results
           path: |
             clients/android/app/build/reports/androidTests/
             clients/android/app/build/outputs/androidTest-results/
-            ${{ runner.temp }}/xszc-emulator.log
+            ${{ runner.temp }}/ana-emulator.log
 
   ios_simulator:
     name: iOS simulator tests
@@ -170,55 +169,55 @@ jobs:
       - name: Prepare and build iOS tests once
         timeout-minutes: 10
         run: |
-          simulator_udid="$XSZC_TEST_SIMULATOR"
-          xcodebuild -project clients/ios/Xszc.xcodeproj -scheme Xszc -sdk iphonesimulator -destination "id=$simulator_udid" -derivedDataPath clients/ios/DerivedData build-for-testing
+          simulator_udid="$ANA_TEST_SIMULATOR"
+          xcodebuild -project clients/ios/Ana.xcodeproj -scheme Ana -sdk iphonesimulator -destination "id=$simulator_udid" -derivedDataPath clients/ios/DerivedData build-for-testing
       - name: Require complete iOS media preparation before tests
         timeout-minutes: 18
         run: bash scripts/ci-ios-prepare.sh wait media
       - name: Run iOS account and state isolation tests
         timeout-minutes: 10
         run: |
-          xcodebuild -project clients/ios/Xszc.xcodeproj -scheme Xszc -sdk iphonesimulator -destination "id=$XSZC_TEST_SIMULATOR" -derivedDataPath clients/ios/DerivedData -only-testing:XszcTests -resultBundlePath clients/ios/StateTestResults.xcresult -collect-test-diagnostics never -parallel-testing-enabled NO test-without-building
+          xcodebuild -project clients/ios/Ana.xcodeproj -scheme Ana -sdk iphonesimulator -destination "id=$ANA_TEST_SIMULATOR" -derivedDataPath clients/ios/DerivedData -only-testing:AnaTests -resultBundlePath clients/ios/StateTestResults.xcresult -collect-test-diagnostics never -parallel-testing-enabled NO test-without-building
           python3 scripts/check-ios-test-results.py clients/ios/StateTestResults.xcresult
       # State tests may deny the host app startup prompt; reset only afterward.
       - name: Reset iOS Photos permission for real first-use UI tests
         timeout-minutes: 18
-        run: time -p bash scripts/seed-ios-ui.sh "$XSZC_TEST_SIMULATOR" reset
+        run: time -p bash scripts/seed-ios-ui.sh "$ANA_TEST_SIMULATOR" reset
       # Keep our explicit screenshots/log export; avoid Xcode simulator sysdiagnose
       # collection hanging after a finished suite on hosted Apple runners.
       - name: Run iOS login and gallery UI tests
         timeout-minutes: 18
         run: |
-          python3 scripts/test-ios-ui.py "$XSZC_TEST_SIMULATOR" clients/ios/TestResults.xcresult
+          python3 scripts/test-ios-ui.py "$ANA_TEST_SIMULATOR" clients/ios/TestResults.xcresult
           python3 scripts/check-ios-test-results.py clients/ios/TestResults.xcresult
       - name: Export iOS UI screenshots and diagnostics
         if: always()
         run: |
           mkdir -p dist/ios-ui
-          if test -f "$RUNNER_TEMP/xszc-ios-prepare.log"; then
-            cp "$RUNNER_TEMP/xszc-ios-prepare.log" dist/ios-ui/preparation.log
+          if test -f "$RUNNER_TEMP/ana-ios-prepare.log"; then
+            cp "$RUNNER_TEMP/ana-ios-prepare.log" dist/ios-ui/preparation.log
           fi
-          if test -f "$RUNNER_TEMP/xszc-ios-media.log"; then
-            cp "$RUNNER_TEMP/xszc-ios-media.log" dist/ios-ui/media-preparation.log
+          if test -f "$RUNNER_TEMP/ana-ios-media.log"; then
+            cp "$RUNNER_TEMP/ana-ios-media.log" dist/ios-ui/media-preparation.log
           fi
-          if test -f "$RUNNER_TEMP/xszc-simulator-boot.log"; then
-            cp "$RUNNER_TEMP/xszc-simulator-boot.log" dist/ios-ui/simulator-boot.log
+          if test -f "$RUNNER_TEMP/ana-simulator-boot.log"; then
+            cp "$RUNNER_TEMP/ana-simulator-boot.log" dist/ios-ui/simulator-boot.log
           fi
-          if test -f "$RUNNER_TEMP/xszc-ios-live.log"; then
-            cp "$RUNNER_TEMP/xszc-ios-live.log" dist/ios-ui/gallery-live.log
+          if test -f "$RUNNER_TEMP/ana-ios-live.log"; then
+            cp "$RUNNER_TEMP/ana-ios-live.log" dist/ios-ui/gallery-live.log
           fi
-          runner_data="$(xcrun simctl get_app_container "$XSZC_TEST_SIMULATOR" org.sarmg.xszc.uitests.xctrunner data 2>/dev/null || true)"
+          runner_data="$(xcrun simctl get_app_container "$ANA_TEST_SIMULATOR" org.sarmg.ana.uitests.xctrunner data 2>/dev/null || true)"
           if test -n "$runner_data"; then
             find "$runner_data/Documents" -name '*.png' -exec cp {} dist/ios-ui/ \;
           fi
-          xcrun simctl spawn "$XSZC_TEST_SIMULATOR" log show --last 15m --info --debug --style compact --predicate 'subsystem == "org.sarmg.xszc"' > dist/ios-ui/gallery.log || true
+          xcrun simctl spawn "$ANA_TEST_SIMULATOR" log show --last 15m --info --debug --style compact --predicate 'subsystem == "org.sarmg.ana"' > dist/ios-ui/gallery.log || true
           if test -f clients/ios/TestResults.xcresult/Info.plist; then
             xcrun xcresulttool export attachments --path clients/ios/TestResults.xcresult --output-path dist/ios-ui/attachments
           fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: xszc-ios-ui
+          name: ana-ios-ui
           path: dist/ios-ui/
           if-no-files-found: warn
 
@@ -262,16 +261,16 @@ jobs:
       - run: ./scripts/build-ios-rust.sh device
       - run: cd clients/ios && xcodegen generate
       - name: Build without signing
-        run: xcodebuild -project clients/ios/Xszc.xcodeproj -scheme Xszc -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath clients/ios/DerivedData build
+        run: xcodebuild -project clients/ios/Ana.xcodeproj -scheme Ana -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath clients/ios/DerivedData build
       - name: Package unsigned IPA
         run: |
           python3 scripts/package-ios-ipa.py \
-            --app clients/ios/DerivedData/Build/Products/Release-iphoneos/Xszc.app \
+            --app clients/ios/DerivedData/Build/Products/Release-iphoneos/Ana.app \
             --version "$(cat VERSION)" \
-            --output "dist/xszc-ios-$(cat VERSION)-unsigned.ipa"
+            --output "dist/ana-ios-$(cat VERSION)-unsigned.ipa"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: xszc-ios-unsigned-ipa
+          name: ana-ios-unsigned-ipa
           path: dist/*.ipa
           if-no-files-found: error
 

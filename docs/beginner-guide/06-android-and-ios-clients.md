@@ -5,7 +5,7 @@
 ## 共同状态机
 
 ```text
-未配置 -> 保存当前 HTTPS/实例授权码 -> 配对取得设备 Token
+未登录 -> 提交 HTTPS 地址、用户名和密码 -> 取得设备 Token
  -> 请求照片权限 -> 选择/排除相册 -> 扫描
  -> durable enqueue -> background upload -> sync cursor
  -> timeline browse -> authenticated download -> system restore
@@ -32,15 +32,15 @@ Worker 重启时从持久状态继续，不能仅依赖 Compose 内存状态。A
 
 ## Android 秘密与权限
 
-服务地址、实例授权码、Token、用户设置和备份状态保存为一个 AES-256-GCM 认证加密快照；随机 IV 由平台 Cipher 生成，
-密钥由 Android Keystore 创建并持有，不导出到文件。密文位于应用私有 `noBackupFilesDir/xszc_secure_v1.bin`，
+服务地址、用户名、设备标识、当前 Token、用户设置和备份状态保存为一个 AES-256-GCM 认证加密快照；随机 IV 由平台 Cipher 生成，
+密钥由 Android Keystore 创建并持有，不导出到文件。密文位于应用私有 `noBackupFilesDir/ana_secure_v1.bin`，
 通过平台 AtomicFile 替换；同步写入、同步磁盘与回读确认完成后才报告保存成功。所有配置实例在同一应用进程内共享事务锁，
-登录凭据、退出状态、整组备份设置及备份快照不会发生部分字段提交；设置页按一份快照读取账户与偏好，避免重复解密和不一致读取。退出后仍保留用于用户再次登录的原凭据，但普通连接不再返回 Token。
+登录凭据、退出状态、整组备份设置及备份快照不会发生部分字段提交；设置页按一份快照读取账户与偏好，避免重复解密和不一致读取。退出会清除当前设备 Token，保留账户设备标识以便下次登录复用同一队列。密码只用于本次请求。
 日志、Intent、SavedState 和崩溃报告不包含凭据。
 
 首次只读不会创建密钥。旧 SharedPreferences 文件、损坏或未完成的快照、已有状态仅剩文件或密钥、解密失败均明确报错并保留现状，
-不会回退到空身份、自动换密钥或迁移旧格式。凭据和密钥均缺失但当前实例数据库仍在时也拒绝初始化；首次未配对浏览生成的
-空身份图库索引不属于实例队列。首次保存失败或中断后，若仅留下密钥而没有快照，即使随后存储恢复也不会猜测可以重新初始化，需要保留现场并明确处置。当前开发版本的格式不受支持时，先保留现场和仍需的本地任务数据，再由用户明确新安装并重新配对。
+不会回退到空身份、自动换密钥或迁移旧格式。凭据和密钥均缺失但当前实例数据库仍在时也拒绝初始化；首次登录前浏览生成的
+空身份图库索引不属于实例队列。首次保存失败或中断后，若仅留下密钥而没有快照，即使随后存储恢复也不会猜测可以重新初始化，需要保留现场并明确处置。当前开发版本的格式不受支持时，先保留现场和仍需的本地任务数据，再由用户明确新安装并重新登录。
 新安装不代表迁移旧任务，也不撤销远端凭据，不能作为通用排障动作。启动失败显示只读错误页和“重新读取”入口，不自动清除数据；
 导航、本地/云端图库、传输页、登录、退出和设置读取/写入失败也进入该错误页；单纯后台调度故障单独提示，不误报配置损坏。后台 Worker 将配置故障记录为 `failure_kind=local_config` 的失败结果，
 保留原任务并停止按网络故障重试；上传中途发现配置故障会将资源保留为可恢复任务，不标成媒体永久失败。发布快照后的回读失败表示保存结果无法确认，必须重新读取实际状态，不再调用发布前回滚。
@@ -52,7 +52,7 @@ Android 正式 package/app ID 只使用当前命名空间，不探测旧 databas
 `SecureConfigInstrumentedTest` 在 Android 上验证平台密钥不可导出、重开/退出语义、丢失文件或密钥及旧格式拒绝。
 平台测试随 `connectedDebugAndroidTest` 执行；本地 JVM 测试不能代替 Android Keystore 与 AtomicFile 的设备验证。
 
-正式应用 ID 是 `org.sarmg.xszc`，Kotlin 路径、命名空间、JNI 导出名和 APK badging 必须
+正式应用 ID 是 `org.sarmg.ana`，Kotlin 路径、命名空间、JNI 导出名和 APK badging 必须
 同时一致。Debug APK 只用于 CI/开发，永远不取得正式秘密；Release 使用受保护 Environment 中两个
 PKCS#12 秘密，并在发布前核对唯一签名者、固定证书指纹和唯一 `arm64-v8a` JNI。安装包仅支持当前
 package/证书身份，JNI 仅导出当前 ABI 符号。
@@ -70,16 +70,16 @@ task 与持久化的 job。当前 `AppDelegate` 只注册 BGProcessingTask，没
 
 ## iOS 秘密与恢复
 
-Token 存 Keychain。恢复路径先取得 manifest，再将下载文件写入私有暂存目录并调用 Rust 校验
+当前 Token 与已记住的账户设备标识存入 Keychain。备份偏好按账户设备分别存储。恢复路径先取得 manifest，再将下载文件写入私有暂存目录并调用 Rust 校验
 size/BLAKE3；校验通过后才交给 PhotoKit `performChanges`。Android 在发布到 MediaStore 前采用相同
 校验。权限拒绝、空间不足和照片库写入失败仍会中止恢复。
 
 ## FFI 规则
 
-当前 C ABI 为 xcsc revision 1：`xszc_*_v1` 接收显式指针/长度和 `XcscFfiResultV1` 输出，返回状态码。
-生成 Header 只有 `xszc_ffi_v1.h`；结果中的字节和错误消息均有明确长度，必须通过
+当前 C ABI 为 xcsc revision 1：`ana_*_v1` 接收显式指针/长度和 `XcscFfiResultV1` 输出，返回状态码。
+生成 Header 只有 `ana_ffi_v1.h`；结果中的字节和错误消息均有明确长度，必须通过
 `xcsc_ffi_result_free_v1` 释放整个结果，不能复制后重复释放。
-Swift 通过 XCFramework 的 `XszcRust` C module 导入 Header；
+Swift 通过 XCFramework 的 `AnaRust` C module 导入 Header；
 Kotlin 使用 `NativeBridgeV1`，JNI 失败抛出 xcsc 映射的异常，不把默认值当成功。两个宿主都先验证
 ABI revision；业务配置仍严格验证当前 product/version/revision/state_epoch，ABI revision 不等于状态 epoch。
 Rust panic 经共享边界转成 255，panic 内容不写入宿主日志；`panic=abort` 构建会被拒绝。

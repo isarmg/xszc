@@ -53,7 +53,7 @@ exit "${SANDBOX_CODE:-0}"
         self.env['BLOCK_BREW'] = '1'
         try:
             self.assertEqual(self.run_step('start').returncode, 0)
-            self.assertFalse((self.root / 'xszc-ios-prepare.status').exists())
+            self.assertFalse((self.root / 'ana-ios-prepare.status').exists())
         finally:
             (self.root / 'release').touch()
         result = self.run_step('wait')
@@ -129,12 +129,12 @@ exit "${SANDBOX_CODE:-0}"
         self.assertNotIn('iOS Swift sandbox finished', result.stdout)
 
     def test_malformed_result_fails_closed(self):
-        (self.root / 'xszc-ios-prepare.status').write_text('not-a-status')
-        (self.root / 'xszc-ios-prepare.log').write_text('probe log')
+        (self.root / 'ana-ios-prepare.status').write_text('not-a-status')
+        (self.root / 'ana-ios-prepare.log').write_text('probe log')
         self.assertNotEqual(self.run_step('wait').returncode, 0)
 
     def media_stubs(self):
-        self.env['XSZC_TEST_SIMULATOR'] = 'test-device'
+        self.env['ANA_TEST_SIMULATOR'] = 'test-device'
         self.write('scripts/ci-ios-simulator.py', """import os, sys
 from pathlib import Path
 assert sys.argv[1:] == ['wait']
@@ -171,7 +171,7 @@ exit "${MEDIA_CODE:-0}"
 
     def test_media_missing_result_is_bounded_failure(self):
         self.script.write_text(self.script.read_text().replace('deadline=$((SECONDS + budget))', 'deadline=$SECONDS'))
-        (self.root / 'xszc-ios-media.log').write_text('worker missing')
+        (self.root / 'ana-ios-media.log').write_text('worker missing')
         result = self.run_step('wait', 'media')
         self.assertEqual(result.returncode, 124)
         self.assertIn('worker missing', result.stderr)
@@ -199,8 +199,8 @@ exit "${MEDIA_CODE:-0}"
         self.assertFalse((self.root / 'media-ran').exists())
 
     def test_media_malformed_result_fails_closed(self):
-        (self.root / 'xszc-ios-media.status').write_text('not-a-status')
-        (self.root / 'xszc-ios-media.log').write_text('media log')
+        (self.root / 'ana-ios-media.status').write_text('not-a-status')
+        (self.root / 'ana-ios-media.log').write_text('media log')
         self.assertNotEqual(self.run_step('wait', 'media').returncode, 0)
 
 

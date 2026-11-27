@@ -25,7 +25,7 @@ fn downloaded_file_verification_rejects_same_size_corruption() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("downloaded.media");
     std::fs::write(&file, b"expected").unwrap();
-    let prepared = xszc_crypto::prepare_file(&file, &dir.path().join("parts"), 8).unwrap();
+    let prepared = ana_crypto::prepare_file(&file, &dir.path().join("parts"), 8).unwrap();
     let path = file.to_str().unwrap();
     assert!(verify_file_impl(path, 8, &prepared.content_blake3).unwrap());
     std::fs::write(&file, b"modified").unwrap();
@@ -97,7 +97,7 @@ fn current_abi_opens_reports_errors_and_rejects_repeated_close() {
     // and each owned result is freed before the next output is requested.
     unsafe {
         assert_eq!(
-            xszc_open_v1(
+            ana_open_v1(
                 path.as_ptr(),
                 path.len(),
                 config.as_ptr(),
@@ -109,18 +109,18 @@ fn current_abi_opens_reports_errors_and_rejects_repeated_close() {
         let first = out.value;
         assert_ne!(first, 0);
         ffi::xcsc_ffi_result_free_v1(&mut out);
-        assert_eq!(xszc_stats_v1(first, &mut out), ffi::XCSC_FFI_OK);
+        assert_eq!(ana_stats_v1(first, &mut out), ffi::XCSC_FFI_OK);
         let value: Value = serde_json::from_slice(
             ffi::checked_input(out.bytes.data, out.bytes.length, ffi::MAX_INPUT_BYTES).unwrap(),
         )
         .unwrap();
         assert_eq!(value["application_version"], MOBILE_APPLICATION_VERSION);
         ffi::xcsc_ffi_result_free_v1(&mut out);
-        assert_eq!(xszc_close_v1(first, &mut out), ffi::XCSC_FFI_OK);
-        assert_eq!(xszc_close_v1(first, &mut out), ffi::XCSC_FFI_INVALID_HANDLE);
+        assert_eq!(ana_close_v1(first, &mut out), ffi::XCSC_FFI_OK);
+        assert_eq!(ana_close_v1(first, &mut out), ffi::XCSC_FFI_INVALID_HANDLE);
         ffi::xcsc_ffi_result_free_v1(&mut out);
         assert_eq!(
-            xszc_open_v1(
+            ana_open_v1(
                 path.as_ptr(),
                 path.len(),
                 config.as_ptr(),
@@ -131,9 +131,9 @@ fn current_abi_opens_reports_errors_and_rejects_repeated_close() {
         );
         let second = out.value;
         assert_ne!(first, second);
-        assert_eq!(xszc_stats_v1(first, &mut out), ffi::XCSC_FFI_INVALID_HANDLE);
+        assert_eq!(ana_stats_v1(first, &mut out), ffi::XCSC_FFI_INVALID_HANDLE);
         ffi::xcsc_ffi_result_free_v1(&mut out);
-        assert_eq!(xszc_close_v1(second, &mut out), ffi::XCSC_FFI_OK);
+        assert_eq!(ana_close_v1(second, &mut out), ffi::XCSC_FFI_OK);
     }
 }
 #[test]
@@ -150,7 +150,7 @@ fn invalid_input_and_identity_are_rejected_without_filesystem_writes() {
             value["part_size"] = json!(part_size);
             let input = value.to_string();
             assert_eq!(
-                xszc_open_v1(
+                ana_open_v1(
                     path.as_ptr(),
                     path.len(),
                     input.as_ptr(),
@@ -162,12 +162,12 @@ fn invalid_input_and_identity_are_rejected_without_filesystem_writes() {
             ffi::xcsc_ffi_result_free_v1(&mut out);
         }
         assert_eq!(
-            xszc_open_v1(path.as_ptr(), path.len(), std::ptr::null(), 1, &mut out),
+            ana_open_v1(path.as_ptr(), path.len(), std::ptr::null(), 1, &mut out),
             ffi::XCSC_FFI_INVALID_ARGUMENT
         );
         ffi::xcsc_ffi_result_free_v1(&mut out);
         assert_eq!(
-            xszc_open_v1(path.as_ptr(), path.len(), [255].as_ptr(), 1, &mut out),
+            ana_open_v1(path.as_ptr(), path.len(), [255].as_ptr(), 1, &mut out),
             ffi::XCSC_FFI_INVALID_ARGUMENT
         );
         ffi::xcsc_ffi_result_free_v1(&mut out);
@@ -182,7 +182,7 @@ fn invalid_input_and_identity_are_rejected_without_filesystem_writes() {
             value.as_object_mut().unwrap().remove(field);
             let input = value.to_string();
             assert_ne!(
-                xszc_open_v1(
+                ana_open_v1(
                     path.as_ptr(),
                     path.len(),
                     input.as_ptr(),
@@ -219,7 +219,7 @@ fn next_exports_current_http_header_without_persisting_transport_metadata() {
         .as_object_mut()
         .unwrap()
         .remove("upload_operation_header");
-    let prepared: xszc_core::PreparedJob = serde_json::from_value(persisted_shape.clone()).unwrap();
+    let prepared: ana_core::PreparedJob = serde_json::from_value(persisted_shape.clone()).unwrap();
     assert_eq!(first["generation_id"], prepared.generation_id);
     assert!(first["request"].get("upload_operation_header").is_none());
     assert!(first["request"].get("generation_id").is_none());

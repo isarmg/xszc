@@ -21,12 +21,12 @@
 | 队列、批次、回执、图库缓存 | `crates/client-core/src/` 与 `schema/` |
 | 分块和内容校验 | `crates/crypto/src/` |
 | C/JNI ABI | `crates/mobile-ffi/src/` 与 `crates/mobile-ffi/include/` |
-| Android 页面、相册和后台 | `clients/android/app/src/main/java/org/sarmg/xszc/` |
-| iOS 页面、PhotoKit 和后台 | `clients/ios/Xszc/` |
+| Android 页面、相册和后台 | `clients/android/app/src/main/java/org/sarmg/ana/` |
+| iOS 页面、PhotoKit 和后台 | `clients/ios/Ana/` |
 | 原生构建、签名和打包 | `scripts/`、Android Gradle 配置、iOS `project.yml` |
 
 ## 变更验证
 
-先为改动运行相邻模块测试，再按[构建与测试](development.md)执行公共和目标平台检查。协议类型按 Cargo 中固定的 xszs revision 阅读；修改跨端 DTO 时同步 Rust、Kotlin、Swift 和合同检查。
+先为改动运行相邻模块测试，再按[构建与测试](development.md)执行公共和目标平台检查。协议类型按 Cargo 中固定的 ana-server revision 阅读；修改跨端 DTO 时同步 Rust、Kotlin、Swift 和合同检查。
 
 发布 APK/IPA 时分别核对应用身份、软件版本、ABI、签名或未签名标记。签名策略见[Android 正式签名](android-signing.md)，完整设备场景见[验收参考](manual-backup-implementation.md#设备验收)。

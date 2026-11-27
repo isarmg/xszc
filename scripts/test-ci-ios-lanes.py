@@ -29,7 +29,7 @@ class SliceTests(unittest.TestCase):
             (root / 'bin').mkdir()
             headers = root / 'crates/mobile-ffi/include'
             headers.mkdir(parents=True)
-            for name in ['xszc_ffi_v1.h', 'module.modulemap']:
+            for name in ['ana_ffi_v1.h', 'module.modulemap']:
                 (headers / name).write_text(name)
             script = root / 'scripts/build-ios-rust.sh'
             shutil.copyfile(ROOT / 'scripts/build-ios-rust.sh', script)
@@ -53,10 +53,10 @@ class SliceTests(unittest.TestCase):
                 code, log = self.run_build(mode)
                 self.assertEqual(code, 0)
                 lines = log.splitlines()
-                self.assertEqual(lines[0], 'cargo:build -p xszc-mobile --release --locked --target ' + target)
+                self.assertEqual(lines[0], 'cargo:build -p ana-mobile --release --locked --target ' + target)
                 self.assertEqual(len(lines), 2)
                 self.assertEqual(lines[1].count('-library '), 1)
-                self.assertIn('target/' + target + '/release/libxszc_mobile.a', lines[1])
+                self.assertIn('target/' + target + '/release/libana_mobile.a', lines[1])
                 self.assertIn('-create-xcframework', lines[1])
 
     def test_default_and_explicit_all_keep_both_slices(self):
@@ -135,8 +135,8 @@ if args[:2] == ['simctl', 'addmedia'] and any('gallery-page-' in arg for arg in 
         result, calls = self.run_seed(mode='reset')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls, [
-            ['simctl', 'get_app_container', 'test-device', 'org.sarmg.xszc', 'app'],
-            ['simctl', 'privacy', 'test-device', 'reset', 'photos', 'org.sarmg.xszc']])
+            ['simctl', 'get_app_container', 'test-device', 'org.sarmg.ana', 'app'],
+            ['simctl', 'privacy', 'test-device', 'reset', 'photos', 'org.sarmg.ana']])
         self.assertNotIn('generate-photos', result.stdout)
 
     def test_unknown_mode_fails_before_simulator_access(self):
@@ -159,7 +159,7 @@ class LivePhotoImportTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('ui_deadline', ROOT / 'scripts/test-ios-ui.py')
         ui = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(ui)
-        navigation = (ROOT / 'clients/ios/XszcUITests/NavigationTests.swift').read_text()
+        navigation = (ROOT / 'clients/ios/AnaUITests/NavigationTests.swift').read_text()
         observer = navigation.split('func testGalleryAutoRefreshesAfterSystemPhotoLibraryChanges()', 1)[1].split('func testSettingsSwitches', 1)[0]
         self.assertIn('waitForExistence(timeout: 240)', observer)
         self.assertEqual(ui.PHOTO_IMPORT_TIMEOUT, 120)
@@ -167,7 +167,7 @@ class LivePhotoImportTests(unittest.TestCase):
             with self.subTest(timeout=timeout):
                 process = mock.MagicMock()
                 process.__enter__.return_value = process
-                process.stdout = ['XSZC_UI_READY_FOR_PHOTO_CHANGE\n'] * 2 + ['still draining XCTest\n']
+                process.stdout = ['ANA_UI_READY_FOR_PHOTO_CHANGE\n'] * 2 + ['still draining XCTest\n']
                 process.wait.return_value = 0
                 failure = subprocess.TimeoutExpired('fixture import', 120) if timeout else None
                 with mock.patch.object(ui.subprocess, 'Popen', return_value=process), \
@@ -199,7 +199,7 @@ class LivePhotoImportTests(unittest.TestCase):
                 # Exercise run_tests itself with a child producer and real pipe;
                 # substitute only the unavailable simulator command.
                 producer = root / 'producer.py'
-                producer.write_text('import time\nprint("XSZC_UI_READY_FOR_PHOTO_CHANGE", flush=True)\ntime.sleep(0.2)\n')
+                producer.write_text('import time\nprint("ANA_UI_READY_FOR_PHOTO_CHANGE", flush=True)\ntime.sleep(0.2)\n')
                 driver = root / 'driver.py'
                 driver.write_text(
                     'import importlib.util, pathlib, sys\n'
@@ -222,8 +222,8 @@ class WorkflowTests(unittest.TestCase):
         simulator = job('ios_simulator')
         sequence = ['ci-ios-simulator.py start', 'ci-ios-prepare.sh start media',
                     'uses: dtolnay/rust-toolchain@', 'build-for-testing',
-                    'ci-ios-prepare.sh wait media', '-only-testing:XszcTests ',
-                    'seed-ios-ui.sh "$XSZC_TEST_SIMULATOR" reset', 'python3 scripts/test-ios-ui.py ']
+                    'ci-ios-prepare.sh wait media', '-only-testing:AnaTests ',
+                    'seed-ios-ui.sh "$ANA_TEST_SIMULATOR" reset', 'python3 scripts/test-ios-ui.py ']
         offsets = [simulator.index(value) for value in sequence]
         self.assertEqual(offsets, sorted(offsets))
         steps = re.split(r'^      - ', simulator, flags=re.M)
@@ -234,7 +234,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('timeout-minutes: 18', media_wait)
         diagnostics = next(step for step in steps if 'Export iOS UI screenshots' in step)
         self.assertIn('if: always()', diagnostics)
-        self.assertIn('xszc-ios-media.log', diagnostics)
+        self.assertIn('ana-ios-media.log', diagnostics)
 
     def test_aggregate_requires_both_exact_success_results(self):
         aggregate = job('ios')
@@ -284,10 +284,10 @@ class WorkflowTests(unittest.TestCase):
             self.assertRegex(host_step, r'run: ' + re.escape(gate) + r'\s*\Z')
         # The retained macOS gate has no simulator/device-specific inputs.
         host_script = (ROOT / 'scripts/test-mobile-ffi-c.sh').read_text()
-        for unsupported in ('--target', '--features', 'XSZC_TEST_SIMULATOR', 'simctl'):
+        for unsupported in ('--target', '--features', 'ANA_TEST_SIMULATOR', 'simctl'):
             self.assertNotIn(unsupported, host_script)
-        self.assertIn('CARGO_INCREMENTAL=0 cargo build --locked -p xszc-mobile', host_script)
-        self.assertIn('cargo build --locked -p xszc-core --example sandbox_database', host_script)
+        self.assertIn('CARGO_INCREMENTAL=0 cargo build --locked -p ana-mobile', host_script)
+        self.assertIn('cargo build --locked -p ana-core --example sandbox_database', host_script)
         self.assertIn('sandbox-exec -f', host_script)
         self.assertNotIn('continue-on-error', job('ios'))
 
@@ -314,11 +314,11 @@ class WorkflowTests(unittest.TestCase):
             for gate in ['verify-ios-rust-toolchain.sh', 'check-xcsc-source.py',
                          'verify-ios-toolchain.sh', 'ci-ios-prepare.sh wait']:
                 self.assertIn(gate, lane)
-        self.assertIn('-only-testing:XszcTests ', simulator)
+        self.assertIn('-only-testing:AnaTests ', simulator)
         self.assertNotIn('-skip-testing:', simulator)
         self.assertIn('python3 scripts/test-ios-ui.py ', simulator)
         ui_runner = (ROOT / 'scripts/test-ios-ui.py').read_text()
-        self.assertIn('"-only-testing:XszcUITests"', ui_runner)
+        self.assertIn('"-only-testing:AnaUITests"', ui_runner)
         self.assertNotIn('-skip-testing:', ui_runner)
         self.assertIn('seed-ios-ui.sh', simulator)
         self.assertNotIn('ci-ios-simulator.py', device)

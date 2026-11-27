@@ -1,11 +1,11 @@
 use std::{
     fs::{self, File},
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
+use ana_protocol::UploadPartSpec;
 use thiserror::Error;
-use xszs_protocol::UploadPartSpec;
 
 pub const MAX_PART_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_CONTENT_PARTS: usize = 4096;
@@ -42,7 +42,20 @@ pub fn verify_file_blake3(
     expected_size: u64,
     expected_blake3: &str,
 ) -> Result<bool, ContentError> {
-    let mut input = File::open(source)?;
+    copy_verified(
+        File::open(source)?,
+        io::sink(),
+        expected_size,
+        expected_blake3,
+    )
+}
+
+fn copy_verified(
+    mut input: impl Read,
+    mut output: impl Write,
+    expected_size: u64,
+    expected_blake3: &str,
+) -> Result<bool, ContentError> {
     let mut hasher = blake3::Hasher::new();
     let mut size = 0_u64;
     // Swift concurrency workers have small stacks; allocate the I/O buffer
@@ -53,11 +66,13 @@ pub fn verify_file_blake3(
         if read == 0 {
             break;
         }
-        size = size.saturating_add(read as u64);
-        if size > expected_size {
+        if read as u64 > expected_size - size {
             return Ok(false);
         }
-        hasher.update(&buffer[..read]);
+        let bytes = &buffer[..read];
+        hasher.update(bytes);
+        output.write_all(bytes)?;
+        size += read as u64;
     }
     Ok(size == expected_size && hasher.finalize().to_hex().as_str() == expected_blake3)
 }
@@ -84,6 +99,11 @@ pub fn prepare_file(
     let mut content_size = 0_u64;
     let mut parts = Vec::new();
     let mut index = 0_u32;
+    let mut buffer = Vec::new();
+    buffer
+        .try_reserve_exact(part_size)
+        .map_err(|_| io::Error::other("part allocation refused"))?;
+    buffer.resize(part_size, 0_u8);
 
     loop {
         if parts.len() == MAX_CONTENT_PARTS {
@@ -93,14 +113,9 @@ pub fn prepare_file(
             }
             break;
         }
-        let mut bytes = Vec::new();
-        bytes
-            .try_reserve_exact(part_size)
-            .map_err(|_| std::io::Error::other("part allocation refused"))?;
-        bytes.resize(part_size, 0_u8);
         let mut filled = 0_usize;
         while filled < part_size {
-            let read = reader.read(&mut bytes[filled..])?;
+            let read = reader.read(&mut buffer[filled..])?;
             if read == 0 {
                 break;
             }
@@ -109,21 +124,21 @@ pub fn prepare_file(
         if filled == 0 && index > 0 {
             break;
         }
-        bytes.truncate(filled);
-        content_hasher.update(&bytes);
+        let bytes = &buffer[..filled];
+        content_hasher.update(bytes);
         content_size += filled as u64;
         parts
             .try_reserve(1)
             .map_err(|_| std::io::Error::other("part metadata allocation refused"))?;
         let path = output_dir.join(format!("{index:08}.part"));
         let mut output = File::create(&path)?;
-        output.write_all(&bytes)?;
+        output.write_all(bytes)?;
         output.sync_all()?;
         parts.push(PreparedPart {
             spec: UploadPartSpec {
                 index,
                 size: filled as u64,
-                blake3: blake3::hash(&bytes).to_hex().to_string(),
+                blake3: blake3::hash(bytes).to_hex().to_string(),
             },
             path,
         });
@@ -147,34 +162,23 @@ pub fn restore_file(
     expected_size: u64,
     expected_blake3: &str,
 ) -> Result<(), ContentError> {
-    let mut input = File::open(downloaded)?;
-    let temporary = output.with_extension("xszc.tmp");
-    let operation = (|| {
-        let mut restored = File::create(&temporary)?;
-        let mut hasher = blake3::Hasher::new();
-        let mut size = 0_u64;
-        let mut buffer = vec![0_u8; 1024 * 1024];
-        loop {
-            let read = input.read(&mut buffer)?;
-            if read == 0 {
-                break;
-            }
-            hasher.update(&buffer[..read]);
-            restored.write_all(&buffer[..read])?;
-            size += read as u64;
-        }
-        if size != expected_size || hasher.finalize().to_hex().as_str() != expected_blake3 {
-            return Err(ContentError::Integrity);
-        }
-        restored.sync_all()?;
-        Ok(())
-    })();
-    if operation.is_ok() {
-        fs::rename(&temporary, output)?;
-    } else {
-        let _ = fs::remove_file(&temporary);
+    let input = File::open(downloaded)?;
+    let directory = output
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let mut restored = tempfile::NamedTempFile::new_in(directory)?;
+    if !copy_verified(
+        input,
+        restored.as_file_mut(),
+        expected_size,
+        expected_blake3,
+    )? {
+        return Err(ContentError::Integrity);
     }
-    operation
+    restored.as_file().sync_all()?;
+    restored.persist(output).map_err(|failure| failure.error)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -205,7 +209,7 @@ mod tests {
 
     fn temporary(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "xszc-{name}-{}-{}",
+            "ana-{name}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -258,6 +262,20 @@ mod tests {
         ));
         assert!(!restored.exists());
         let _ = fs::remove_file(downloaded);
+    }
+
+    #[test]
+    fn restore_uses_a_private_temporary_file_beside_the_destination() {
+        let directory = tempfile::tempdir().unwrap();
+        let input = directory.path().join("received");
+        let destination = directory.path().join("photo.jpg");
+        let unrelated = destination.with_extension("ana.tmp");
+        let content = b"photo";
+        fs::write(&input, content).unwrap();
+        fs::write(&unrelated, b"unrelated data").unwrap();
+        restore_file(&input, &destination, 5, &blake3::hash(content).to_hex()).unwrap();
+        assert_eq!(fs::read(&destination).unwrap(), content);
+        assert_eq!(fs::read(&unrelated).unwrap(), b"unrelated data");
     }
 
     #[test]

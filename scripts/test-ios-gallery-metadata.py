@@ -30,7 +30,7 @@ def block(source, marker):
 
 class Contract:
     def __init__(self):
-        path = args.before_file or args.root / 'clients/ios/Xszc/BackupCoordinator.swift'
+        path = args.before_file or args.root / 'clients/ios/Ana/BackupCoordinator.swift'
         source = path.read_text()
         body = block(source, 'func loadLibraryPage(first: Bool = false) async')
         assert '@MainActor\nfinal class BackupCoordinator' in source

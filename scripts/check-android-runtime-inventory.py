@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def common():
     spec = importlib.util.spec_from_file_location(
-        "xszc_runtime_inventory", ROOT / "scripts" / "release-inventory.py")
+        "ana_runtime_inventory", ROOT / "scripts" / "release-inventory.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -34,15 +34,14 @@ def verify(export):
     version = tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["package"]["version"]
     if (ROOT / "VERSION").read_text().strip() != version:
         raise ValueError("Android runtime inventory version differs from the workspace")
-    with tempfile.TemporaryDirectory(prefix="xszc-runtime-source-check-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="ana-runtime-source-check-") as temporary, module.release_tools():
         root = Path(temporary).resolve(strict=True)
-        tools = module.checkout_tools(root / "tools", environment)
-        producer = module.load_tool("gradle_sbom", tools)
+        import gradle_sbom as producer
         document = json.loads(producer.bytes_regular(export, 8 * 1024 * 1024),
                               object_pairs_hook=unique)
         stage = root / "stage"
         stage.mkdir()
-        bom = producer.produce(document, stage, "xszc", version, revision)
+        bom = producer.produce(document, stage, "ana", version, revision)
         components = json.loads(bom.read_text())["components"]
         print(f"Verified {len(components)} actual Android release runtime components, "
               "their original upstream bytes, and upstream license texts")

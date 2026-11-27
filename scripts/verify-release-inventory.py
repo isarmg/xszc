@@ -5,7 +5,6 @@ import importlib.util
 from pathlib import Path
 import re
 import sys
-import tempfile
 import tomllib
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -27,13 +26,12 @@ def main():
     if not isinstance(version,str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[0-9]+)?',version):
         raise ValueError('release software version is not its exact current Cargo identity')
     revision=module.run(['git','rev-parse','HEAD'],ROOT,environment)
-    with tempfile.TemporaryDirectory(prefix='client-release-checksums-') as temporary:
-        tools=module.checkout_tools(Path(temporary).resolve(strict=True)/'tools',environment)
+    with module.exported_release_tools(revision, environment) as tools:
         verifier=tools/'scripts/release_manifest.py'
-        module.run([sys.executable,str(verifier),'finalize',str(args.stage),
+        module.run([sys.executable,'-B',str(verifier),'finalize',str(args.stage),
             '--product',profile['product_id'],'--version',version,
             '--source-revision',revision,'--target',args.target],ROOT,environment)
-        module.run([sys.executable,str(verifier),'verify',str(args.stage)],ROOT,environment)
+        module.run([sys.executable,'-B',str(verifier),'verify',str(args.stage)],ROOT,environment)
 
 
 if __name__=='__main__':main()

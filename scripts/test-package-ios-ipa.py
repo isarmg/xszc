@@ -21,20 +21,20 @@ class PackageTests(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.TemporaryDirectory()
         self.addCleanup(self.root.cleanup)
-        self.app = Path(self.root.name) / "build" / "Xszc.app"
+        self.app = Path(self.root.name) / "build" / "Ana.app"
         self.app.mkdir(parents=True)
-        self.output = Path(self.root.name) / "dist" / "xszc-ios-0.4.1-unsigned.ipa"
+        self.output = Path(self.root.name) / "dist" / "ana-ios-0.4.1-unsigned.ipa"
         self.info = {
-            "CFBundleIdentifier": "org.sarmg.xszc",
+            "CFBundleIdentifier": "org.sarmg.ana",
             "CFBundleShortVersionString": "0.4.1",
             "CFBundleSupportedPlatforms": ["iPhoneOS"],
-            "CFBundleExecutable": "Xszc",
+            "CFBundleExecutable": "Ana",
             "MinimumOSVersion": "27.0",
             "DTSDKName": "iphoneos27.0",
         }
         self.write_info()
-        (self.app / "Xszc").write_bytes(b"device executable fixture")
-        (self.app / "Xszc").chmod(0o755)
+        (self.app / "Ana").write_bytes(b"device executable fixture")
+        (self.app / "Ana").chmod(0o755)
 
     def write_info(self):
         (self.app / "Info.plist").write_bytes(plistlib.dumps(self.info, fmt=plistlib.FMT_BINARY))
@@ -45,11 +45,11 @@ class PackageTests(unittest.TestCase):
         ipa.package(self.app, self.output, "0.4.1")
         with zipfile.ZipFile(self.output) as archive:
             self.assertIsNone(archive.testzip())
-            self.assertTrue(all(name.startswith("Payload/Xszc.app") for name in archive.namelist()))
-            self.assertEqual(archive.read("Payload/Xszc.app/照片.png"), b"image fixture")
-            binary = archive.getinfo("Payload/Xszc.app/Xszc")
+            self.assertTrue(all(name.startswith("Payload/Ana.app") for name in archive.namelist()))
+            self.assertEqual(archive.read("Payload/Ana.app/照片.png"), b"image fixture")
+            binary = archive.getinfo("Payload/Ana.app/Ana")
             self.assertEqual((binary.external_attr >> 16) & 0o777, 0o755)
-            link = archive.getinfo("Payload/Xszc.app/resource-link")
+            link = archive.getinfo("Payload/Ana.app/resource-link")
             self.assertTrue(stat.S_ISLNK(link.external_attr >> 16))
             self.assertEqual(archive.read(link).decode(), "照片.png")
 
@@ -85,18 +85,18 @@ class PackageTests(unittest.TestCase):
                 self.info[field] = original
 
     def test_missing_binary_and_external_links_are_rejected(self):
-        (self.app / "Xszc").unlink()
+        (self.app / "Ana").unlink()
         with self.assertRaises(ValueError):
             ipa.package(self.app, self.output, "0.4.1")
-        (self.app / "Xszc").write_bytes(b"fixture")
-        (self.app / "Xszc").chmod(0o755)
+        (self.app / "Ana").write_bytes(b"fixture")
+        (self.app / "Ana").chmod(0o755)
         (self.app / "outside").symlink_to(Path(self.root.name))
         with self.assertRaises(ValueError):
             ipa.package(self.app, self.output, "0.4.1")
         self.assertFalse(self.output.exists())
 
     def test_embedded_static_library_is_rejected_without_changing_input_or_output(self):
-        library = self.app / "Frameworks" / "libxszc_mobile.a"
+        library = self.app / "Frameworks" / "libana_mobile.a"
         library.parent.mkdir()
         library.write_bytes(b"!<arch>\nstatic library fixture")
         original_bundle = {path.relative_to(self.app): path.read_bytes()

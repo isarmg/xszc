@@ -44,6 +44,59 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
+name = "ana-core"
+version = "1.0.0"
+dependencies = [
+ "ana-crypto",
+ "ana-protocol",
+ "anyhow",
+ "blake3",
+ "futures-util",
+ "libc",
+ "libsqlite3-sys",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+ "xcsc",
+]
+
+[[package]]
+name = "ana-crypto"
+version = "1.0.0"
+dependencies = [
+ "ana-protocol",
+ "blake3",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "ana-mobile"
+version = "1.0.0"
+dependencies = [
+ "ana-core",
+ "ana-crypto",
+ "jni",
+ "serde_json",
+ "tempfile",
+ "xcsc",
+]
+
+[[package]]
+name = "ana-protocol"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -314,9 +367,9 @@ dependencies = [
 
 [[package]]
 name = "ctutils"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03bb0e1cc970d482d121d9a1744999169b69a07470b3d644a7894e53fcaf4574"
+checksum = "12218662ccac37d9714f2191252553d67585b97df8c839cbe49e0bde278dc865"
 dependencies = [
  "cmov",
 ]
@@ -548,6 +601,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glob"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
+
+[[package]]
 name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -766,6 +825,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "java-locator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09c46c1fe465c59b1474e665e85e1256c3893dd00927b8d55f63b09044c1e64f"
+dependencies = [
+ "glob",
+]
+
+[[package]]
 name = "jni"
 version = "0.22.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -773,8 +841,10 @@ checksum = "5efd9a482cf3a427f00d6b35f14332adc7902ce91efb778580e180ff90fa3498"
 dependencies = [
  "cfg-if",
  "combine",
+ "java-locator",
  "jni-macros",
  "jni-sys",
+ "libloading",
  "log",
  "simd_cesu8",
  "thiserror",
@@ -826,10 +896,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazy_static"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
+
+[[package]]
 name = "libc"
 version = "0.2.190"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
+
+[[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
 
 [[package]]
 name = "libsqlite3-sys"
@@ -1162,6 +1248,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharded-slab"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1388,6 +1483,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread_local"
+version = "1.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "tinystr"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1453,6 +1557,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
+dependencies = [
+ "sharded-slab",
+ "thread_local",
+ "tracing-core",
 ]
 
 [[package]]
@@ -1666,7 +1781,6 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 [[package]]
 name = "xcsc"
 version = "1.0.0"
-source = "git+https://github.com/isarmg/xcsc.git?rev=5db1c7a1ee6d086ada1f1e564e31709b764fe221#5db1c7a1ee6d086ada1f1e564e31709b764fe221"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -1676,6 +1790,7 @@ dependencies = [
  "hkdf",
  "jni",
  "libc",
+ "libsqlite3-sys",
  "quick-xml",
  "rand",
  "roxmltree",
@@ -1685,65 +1800,15 @@ dependencies = [
  "sha1",
  "sha2 0.11.0",
  "shlex",
- "tempfile",
- "thiserror",
- "tokio",
- "uuid",
- "windows-sys",
- "zeroize",
-]
-
-[[package]]
-name = "xszc-core"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "blake3",
- "futures-util",
- "libc",
- "libsqlite3-sys",
- "serde",
- "serde_json",
- "sha2 0.11.0",
  "sqlx",
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
- "xcsc",
- "xszc-crypto",
- "xszs-protocol",
-]
-
-[[package]]
-name = "xszc-crypto"
-version = "1.0.0"
-dependencies = [
- "blake3",
- "thiserror",
- "xszs-protocol",
-]
-
-[[package]]
-name = "xszc-mobile"
-version = "1.0.0"
-dependencies = [
- "jni",
- "serde_json",
- "tempfile",
- "xcsc",
- "xszc-core",
- "xszc-crypto",
-]
-
-[[package]]
-name = "xszs-protocol"
-version = "1.0.0"
-source = "git+https://github.com/isarmg/xszs.git?rev=ec146c7bdc9b29f332b049369d0c5cfc84f9ce29#ec146c7bdc9b29f332b049369d0c5cfc84f9ce29"
-dependencies = [
- "serde",
- "serde_json",
- "uuid",
+ "windows-sys",
+ "zeroize",
 ]
 
 [[package]]

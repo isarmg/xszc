@@ -1,5 +1,5 @@
 [package]
-name = "xszc-mobile"
+name = "ana-mobile"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,10 +10,10 @@ license.workspace = true
 crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-xszc-core = { path = "../client-core" }
-xszc-crypto = { path = "../crypto" }
+ana-core = { path = "../client-core" }
+ana-crypto = { path = "../crypto" }
 serde_json.workspace = true
-xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "5db1c7a1ee6d086ada1f1e564e31709b764fe221", version = "=1.0.0", features = ["mobile-ffi"] }
+xcsc = { workspace = true, features = ["mobile-ffi"] }
 jni = { workspace = true, optional = true }
 
 [features]
@@ -21,11 +21,11 @@ jni-host-tests = ["dep:jni", "xcsc/jni"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni.workspace = true
-xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "5db1c7a1ee6d086ada1f1e564e31709b764fe221", version = "=1.0.0", features = ["jni", "mobile-ffi"] }
+xcsc = { workspace = true, features = ["jni", "mobile-ffi"] }
 
 [dev-dependencies]
 jni.workspace = true
-xcsc = { git = "https://github.com/isarmg/xcsc.git", rev = "5db1c7a1ee6d086ada1f1e564e31709b764fe221", version = "=1.0.0", features = ["jni", "mobile-ffi"] }
+xcsc = { workspace = true, features = ["jni", "mobile-ffi"] }
 tempfile.workspace = true
 
 [lints]

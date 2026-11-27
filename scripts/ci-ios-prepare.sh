@@ -8,8 +8,8 @@ case "$kind" in
   media) name=media; budget=1080 ;;
   *) echo 'Expected tools or media' >&2; exit 2 ;;
 esac
-status="$RUNNER_TEMP/xszc-ios-$name.status"
-log="$RUNNER_TEMP/xszc-ios-$name.log"
+status="$RUNNER_TEMP/ana-ios-$name.status"
+log="$RUNNER_TEMP/ana-ios-$name.log"
 case "${1:-}" in
   start)
     rm -f "$status" "$status.tmp"
@@ -31,7 +31,7 @@ python3 scripts/ci-ios-simulator.py wait
 code=$?
 printf '%s iOS simulator wait finished: exit %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$code"
 if [ "$code" -ne 0 ]; then exit "$code"; fi
-bash scripts/seed-ios-ui.sh "$XSZC_TEST_SIMULATOR" media
+bash scripts/seed-ios-ui.sh "$ANA_TEST_SIMULATOR" media
 '''
 worker = subprocess.Popen(['bash', '-c', command], start_new_session=True)
 try:

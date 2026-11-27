@@ -1,4 +1,4 @@
-use xszc_core::{
+use ana_core::{
     Client, ClientConfig, MOBILE_APPLICATION_VERSION, MOBILE_DATABASE_FILENAME, MOBILE_PRODUCT,
     MOBILE_REVISION, MOBILE_STATE_EPOCH,
 };

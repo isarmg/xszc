@@ -1,0 +1,265 @@
+import Foundation
+import AnaRust
+
+private func withUTF8<T>(_ text: String, _ body: (UnsafePointer<UInt8>?, Int) throws -> T) rethrows -> T {
+    try Array(text.utf8).withUnsafeBufferPointer { try body($0.baseAddress, $0.count) }
+}
+
+private func nativeCall(_ operation: (UnsafeMutablePointer<XcscFfiResultV1>) -> Int32) throws -> (value: UInt64, data: Data) {
+    var result = XcscFfiResultV1()
+    let status = operation(&result)
+    guard result.abi_revision == UInt32(XCSC_FFI_ABI_REVISION) else {
+        throw ClientFailure.message("ana native result ABI mismatch")
+    }
+    defer { _ = xcsc_ffi_result_free_v1(&result) }
+    guard status == result.status, result.bytes.length <= Int(XCSC_FFI_MAX_OUTPUT_BYTES),
+          result.bytes.data != nil || result.bytes.length == 0 else {
+        throw ClientFailure.message("ana native result is invalid")
+    }
+    let data = result.bytes.data.map { Data(bytes: $0, count: result.bytes.length) } ?? Data()
+    guard status == Int32(XCSC_FFI_OK) else {
+        throw ClientFailure.message(String(data: data, encoding: .utf8) ?? "Native operation failed")
+    }
+    return (result.value, data)
+}
+
+struct UploadPart: Codable {
+    let index: UInt32
+    let size: UInt64
+    let blake3: String
+}
+
+enum JSONValue: Codable {
+    case string(String), number(Double), bool(Bool), object([String: JSONValue]), array([JSONValue]), null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null }
+        else if let value = try? container.decode(Bool.self) { self = .bool(value) }
+        else if let value = try? container.decode(Double.self) { self = .number(value) }
+        else if let value = try? container.decode(String.self) { self = .string(value) }
+        else if let value = try? container.decode([String: JSONValue].self) { self = .object(value) }
+        else { self = .array(try container.decode([JSONValue].self)) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value): try container.encode(value)
+        case .number(let value): try container.encode(value)
+        case .bool(let value): try container.encode(value)
+        case .object(let value): try container.encode(value)
+        case .array(let value): try container.encode(value)
+        case .null: try container.encodeNil()
+        }
+    }
+}
+
+struct CreateUpload: Codable {
+    let sourceAssetId: String
+    let sourceResourceId: String
+    let mediaKind: String
+    let role: String
+    let filename: String
+    let mimeType: String
+    let sourceCreatedAtMs: Int64
+    let storageEncoding: StorageEncoding
+    let contentSize: UInt64
+    let contentBlake3: String
+    let metadata: JSONValue?
+    let parts: [UploadPart]
+}
+
+struct LocalPart: Codable {
+    let index: UInt32
+    let path: String
+}
+
+struct PreparedJob: Codable {
+    let product: String
+    let applicationVersion: String
+    let revision: UInt32
+    let stateEpoch: String
+    let jobId: String
+    let generationId: String
+    let uploadOperationHeader: String
+    let request: CreateUpload
+    let localParts: [LocalPart]
+}
+
+struct EnqueueInput: Codable {
+    let product: String
+    let applicationVersion: String
+    let revision: UInt32
+    let stateEpoch: String
+    let sourceAssetId: String
+    let sourceResourceId: String
+    let mediaKind: String
+    let role: String
+    let filePath: String
+    let filename: String
+    let mimeType: String
+    let sourceCreatedAtMs: Int64
+    let modifiedMs: Int64
+    let sourceSize: UInt64
+    let metadataJson: String?
+    let removeSourceAfterPrepare: Bool
+    var batchId: String? = nil
+    var batchItemId: String? = nil
+}
+
+private struct Envelope<T: Decodable>: Decodable {
+    let product: String
+    let applicationVersion: String
+    let revision: UInt32
+    let stateEpoch: String
+    let ok: Bool
+    let value: T?
+    let error: String?
+}
+
+private struct EmptyValue: Decodable {}
+
+final class RustClient: @unchecked Sendable {
+    static func verifyFileBlake3(path: String, expectedSize: UInt64, expectedHash: String) throws -> Bool {
+        let result = try nativeCall { output in
+            withUTF8(path) { pathPointer, pathLength in
+                withUTF8(expectedHash) { hashPointer, hashLength in
+                    ana_verify_file_blake3_v1(pathPointer, pathLength, expectedSize,
+                        hashPointer, hashLength, output)
+                }
+            }
+        }
+        guard result.value <= 1 else { throw ClientFailure.message("Native file verification returned an invalid boolean") }
+        return result.value == 1
+    }
+
+    private let handle: UInt64
+    private let encoder: JSONEncoder = {
+        let value = JSONEncoder()
+        value.keyEncodingStrategy = .convertToSnakeCase
+        return value
+    }()
+    private let decoder: JSONDecoder = {
+        let value = JSONDecoder()
+        value.keyDecodingStrategy = .convertFromSnakeCase
+        return value
+    }()
+
+    init(databasePath: String) throws {
+        guard ana_ffi_abi_revision() == UInt32(XCSC_FFI_ABI_REVISION) else {
+            throw ClientFailure.message("ana native ABI mismatch")
+        }
+        let config: [String: Any] = [
+            "product": MobileContractV1.product,
+            "application_version": MobileContractV1.applicationVersion,
+            "revision": MobileContractV1.revision,
+            "state_epoch": MobileContractV1.stateEpoch,
+            "part_size": 16 * 1024 * 1024,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: config)
+        let opened = try nativeCall { output in
+            withUTF8(databasePath) { path, pathLength in
+                data.withUnsafeBytes { bytes in
+                    ana_open_v1(path, pathLength, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, output)
+                }
+            }
+        }
+        guard opened.value != 0 else { throw ClientFailure.message("Native open returned an invalid handle") }
+        handle = opened.value
+    }
+
+    deinit { _ = try? nativeCall { ana_close_v1(handle, $0) } }
+
+    func needs(asset: String, resource: String, modifiedMs: Int64) throws -> Bool {
+        let result = try nativeCall { output in
+            withUTF8(asset) { assetPointer, assetLength in
+                withUTF8(resource) { resourcePointer, resourceLength in
+                    ana_needs_v1(handle, assetPointer, assetLength, resourcePointer, resourceLength, modifiedMs, output)
+                }
+            }
+        }
+        guard result.value <= 1 else { throw ClientFailure.message("Native needs returned an invalid boolean") }
+        return result.value == 1
+    }
+
+    func enqueue(_ input: EnqueueInput) throws {
+        let data = try encoder.encode(input)
+        let _: String? = try call { output in
+            data.withUnsafeBytes { bytes in ana_enqueue_v1(handle, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, output) }
+        }
+    }
+
+    @discardableResult
+    func transfer(_ command: [String: Any]) throws -> Any {
+        let request: [String: Any] = ["product": MobileContractV1.product,
+            "application_version": MobileContractV1.applicationVersion, "revision": MobileContractV1.revision,
+            "state_epoch": MobileContractV1.stateEpoch, "command": command]
+        let data = try JSONSerialization.data(withJSONObject: request)
+        let value: JSONValue? = try call { output in
+            data.withUnsafeBytes { bytes in
+                ana_transfer_v1(handle, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, output)
+            }
+        }
+        guard let value else { return NSNull() }
+        return try JSONSerialization.jsonObject(with: JSONEncoder().encode(value), options: [.fragmentsAllowed])
+    }
+
+    func next(stagingRoot: String) throws -> PreparedJob? {
+        let job: PreparedJob? = try call { output in
+            withUTF8(stagingRoot) { ana_next_v1(handle, $0, $1, output) }
+        }
+        if let job {
+            try MobileContractV1.requireIdentity(product: job.product, applicationVersion: job.applicationVersion,
+                                                 revision: job.revision, stateEpoch: job.stateEpoch)
+        }
+        return job
+    }
+
+    func markUpload(job: String, upload: String) throws {
+        let _: EmptyValue? = try call { output in
+            withUTF8(job) { jobPointer, jobLength in
+                withUTF8(upload) { ana_mark_upload_v1(handle, jobPointer, jobLength, $0, $1, output) }
+            }
+        }
+    }
+    func markPart(job: String, index: UInt32) throws {
+        let _: EmptyValue? = try call { output in withUTF8(job) { ana_mark_part_v1(handle, $0, $1, index, output) } }
+    }
+    func markComplete(job: String) throws {
+        let _: EmptyValue? = try call { output in withUTF8(job) { ana_mark_complete_v1(handle, $0, $1, output) } }
+    }
+    func markFailed(job: String, error: String, retryable: Bool = true) throws {
+        let _: EmptyValue? = try call { output in
+            withUTF8(job) { jobPointer, jobLength in
+                withUTF8(error) { ana_mark_failed_v1(handle, jobPointer, jobLength, $0, $1,
+                    retryable ? 1 : 0, output) }
+            }
+        }
+    }
+    func statsDescription() -> String {
+        let stats: JSONValue? = try? call { ana_stats_v1(handle, $0) }
+        return stats.map { String(describing: $0) } ?? ""
+    }
+
+    private func call<T: Decodable>(_ operation: (UnsafeMutablePointer<XcscFfiResultV1>) -> Int32) throws -> T? {
+        let data = try nativeCall(operation).data
+        let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let expectedKeys = Set(["product", "application_version", "revision", "state_epoch", "ok", "value", "error"])
+        guard raw.map({ Set($0.keys) }) == expectedKeys else {
+            throw ClientFailure.message("Rust Client returned an invalid current envelope")
+        }
+        let envelope = try decoder.decode(Envelope<T>.self, from: data)
+        try MobileContractV1.requireIdentity(product: envelope.product, applicationVersion: envelope.applicationVersion,
+                                             revision: envelope.revision, stateEpoch: envelope.stateEpoch)
+        guard envelope.ok && envelope.error == nil else {
+            throw ClientFailure.message("Rust Client returned an invalid success envelope")
+        }
+        return envelope.value
+    }
+}
+
+enum ClientFailure: LocalizedError {
+    case message(String)
+    var errorDescription: String? { switch self { case .message(let value): value } }
+}

@@ -26,25 +26,26 @@ def archive(name, body):
 class AndroidRuntimeExportTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix="xszc-gradle-export-test-")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="ana-gradle-export-test-")
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name).resolve(strict=True)
         spec = importlib.util.spec_from_file_location(
-            "xszc_export_test_inventory", ROOT / "scripts" / "release-inventory.py")
+            "ana_export_test_inventory", ROOT / "scripts" / "release-inventory.py")
         cls.common = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.common)
         cls.environment = cls.common.clean_environment()
-        tools = cls.common.checkout_tools(cls.root / "tools", cls.environment)
-        cls.producer = cls.common.load_tool("gradle_sbom", tools)
+        cls.enterClassContext(cls.common.release_tools())
+        import gradle_sbom
+        cls.producer = gradle_sbom
         cls.repository = "https://runtime.example.invalid/maven/"
-        cls.coordinate = "org.xszc.fixture:runtime-kmp:1.0.0"
+        cls.coordinate = "org.ana.fixture:runtime-kmp:1.0.0"
         cls.originals = {
             "runtime-kmp-1.0.0.aar": archive("classes.jar", archive("Runtime.class", b"fixture class")),
             "runtime-kmp-1.0.0-features.jar": archive("Feature.class", b"fixture feature\r\n\x1a"),
         }
-        cls.sources = {cls.repository + "org/xszc/fixture/runtime-kmp/1.0.0/" + name: body
+        cls.sources = {cls.repository + "org/ana/fixture/runtime-kmp/1.0.0/" + name: body
                        for name, body in cls.originals.items()}
-        published = cls.root / "repository" / "org/xszc/fixture/runtime-kmp/1.0.0"
+        published = cls.root / "repository" / "org/ana/fixture/runtime-kmp/1.0.0"
         published.mkdir(parents=True)
         files = []
         for local, remote in [("runtime.aar", "runtime-kmp-1.0.0.aar"),
@@ -54,13 +55,13 @@ class AndroidRuntimeExportTests(unittest.TestCase):
             files.append({"name": local, "url": remote, "size": len(body),
                           "sha256": hashlib.sha256(body).hexdigest()})
         metadata = {"formatVersion": "1.1",
-                    "component": {"group": "org.xszc.fixture", "module": "runtime-kmp", "version": "1.0.0"},
+                    "component": {"group": "org.ana.fixture", "module": "runtime-kmp", "version": "1.0.0"},
                     "variants": [{"name": "androidRuntimeElements-published",
                                   "attributes": {"org.gradle.usage": "java-runtime"}, "files": files}]}
         (published / "runtime-kmp-1.0.0.module").write_text(json.dumps(metadata))
         (published / "runtime-kmp-1.0.0.pom").write_text(
             "<project><!-- do_not_remove: published-with-gradle-metadata -->"
-            "<modelVersion>4.0.0</modelVersion><groupId>org.xszc.fixture</groupId>"
+            "<modelVersion>4.0.0</modelVersion><groupId>org.ana.fixture</groupId>"
             "<artifactId>runtime-kmp</artifactId><version>1.0.0</version><packaging>aar</packaging></project>")
         (cls.root / "settings.gradle").write_text(
             "dependencyResolutionManagement { repositories { maven { url = uri('repository') } } }\n"
@@ -70,7 +71,7 @@ class AndroidRuntimeExportTests(unittest.TestCase):
         (app / "build.gradle").write_text(
             "configurations { releaseRuntimeClasspath { canBeResolved=true; canBeConsumed=false; "
             "attributes { attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, 'java-runtime')) } } }\n"
-            "dependencies { releaseRuntimeClasspath 'org.xszc.fixture:runtime-kmp:1.0.0' }\n")
+            "dependencies { releaseRuntimeClasspath 'org.ana.fixture:runtime-kmp:1.0.0' }\n")
         gradle = shutil.which("gradle")
         if gradle is None:
             raise RuntimeError("The real Gradle runtime is required for Android source inventory tests")
@@ -106,7 +107,7 @@ class AndroidRuntimeExportTests(unittest.TestCase):
                 raw, url, repository = self.producer.upstream_artifact(
                     self.component, artifact, [self.repository], self.download)
                 self.assertEqual(raw, original)
-                self.assertEqual(url, self.repository + "org/xszc/fixture/runtime-kmp/1.0.0/" + artifact["filename"])
+                self.assertEqual(url, self.repository + "org/ana/fixture/runtime-kmp/1.0.0/" + artifact["filename"])
                 self.assertEqual(repository, self.repository)
 
     def test_cache_filename_unknown_source_and_wrong_upstream_bytes_remain_rejected(self):
