@@ -21,13 +21,29 @@ class PreparationTests(unittest.TestCase):
         (self.root / 'bin').mkdir()
         self.script = self.root / 'scripts/ci-ios-prepare.sh'
         shutil.copyfile(SOURCE, self.script)
-        self.write('bin/brew', '''#!/usr/bin/env bash
+        shutil.copyfile(SOURCE.with_name('install-ios-xcodegen.sh'), self.root / 'scripts/install-ios-xcodegen.sh')
+        self.write('bin/curl', '''#!/usr/bin/env bash
 set -eu
-echo "brew:$*"
-if [[ "${BLOCK_BREW:-0}" == 1 ]]; then
+echo 'xcodegen-download'
+if [[ "${BLOCK_INSTALL:-0}" == 1 ]]; then
   until [[ -f "$RUNNER_TEMP/release" ]]; do sleep 0.01; done
 fi
-exit "${BREW_CODE:-0}"
+if [[ "${DOWNLOAD_CODE:-0}" != 0 ]]; then exit "$DOWNLOAD_CODE"; fi
+while [[ "$1" != --output ]]; do shift; done
+printf 'archive stub' > "$2"
+test "$3" = 'https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip'
+''')
+        self.write('bin/shasum', '''#!/usr/bin/env bash
+set -eu
+test "$1" = -a && test "$2" = 256 && test -f "$3"
+printf '%s  %s\\n' "${XCODEGEN_DIGEST:-4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806}" "$3"
+''')
+        self.write('bin/unzip', '''#!/usr/bin/env bash
+set -eu
+test "$1" = -q && test -f "$2" && test "$3" = -d
+echo 'xcodegen-unzip'
+mkdir -p "$4/xcodegen/bin" "$4/xcodegen/share/xcodegen/SettingPresets"
+cp "$RUNNER_TEMP/bin/xcodegen" "$4/xcodegen/bin/xcodegen"
 ''')
         self.write('bin/xcodegen', '''#!/usr/bin/env bash
 printf '%s\\n' "${XCODEGEN_VERSION:-Version: 2.46.0}"
@@ -50,7 +66,7 @@ exit "${SANDBOX_CODE:-0}"
                               capture_output=True, text=True, timeout=5)
 
     def test_start_returns_before_worker_and_wait_joins_across_shells(self):
-        self.env['BLOCK_BREW'] = '1'
+        self.env['BLOCK_INSTALL'] = '1'
         try:
             self.assertEqual(self.run_step('start').returncode, 0)
             self.assertFalse((self.root / 'ana-ios-prepare.status').exists())
@@ -58,8 +74,9 @@ exit "${SANDBOX_CODE:-0}"
             (self.root / 'release').touch()
         result = self.run_step('wait')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('brew:install xcodegen', result.stdout)
+        self.assertIn('xcodegen-download', result.stdout)
         self.assertIn('sandbox-executed', result.stdout)
+        self.assertTrue((self.root / 'ana-xcodegen/bin/xcodegen').is_file())
 
     def assert_timestamps(self, output, labels, earliest, latest):
         stamps = []
@@ -84,10 +101,10 @@ exit "${SANDBOX_CODE:-0}"
         latest = datetime.now(timezone.utc)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assert_timestamps(result.stdout, [
-            'iOS tools worker entered', 'iOS brew started', 'iOS brew finished',
+            'iOS tools worker entered', 'iOS XcodeGen install started', 'iOS XcodeGen install finished',
             'iOS Swift sandbox started', 'iOS Swift sandbox finished',
         ], earliest, latest)
-        self.assertLess(result.stdout.index('iOS brew started'), result.stdout.index('brew:install'))
+        self.assertLess(result.stdout.index('iOS XcodeGen install started'), result.stdout.index('xcodegen-download'))
         self.assertLess(result.stdout.index('sandbox-executed'), result.stdout.index('iOS Swift sandbox finished'))
 
     def test_media_logs_wait_start_and_original_result_on_success_or_failure(self):
@@ -104,13 +121,22 @@ exit "${SANDBOX_CODE:-0}"
                 ], earliest, datetime.now(timezone.utc))
                 self.assertEqual('media-executed' in result.stdout, code == '0')
 
-    def test_brew_failure_preserves_code_and_stops_later_work(self):
-        self.env['BREW_CODE'] = '7'
+    def test_download_failure_preserves_code_and_stops_later_work(self):
+        self.env['DOWNLOAD_CODE'] = '7'
         self.run_step('start')
         result = self.run_step('wait')
         self.assertEqual(result.returncode, 7)
-        self.assertIn('iOS brew started', result.stdout)
-        self.assertNotIn('iOS brew finished', result.stdout)
+        self.assertIn('iOS XcodeGen install started', result.stdout)
+        self.assertNotIn('iOS XcodeGen install finished', result.stdout)
+        self.assertFalse((self.root / 'sandbox-ran').exists())
+
+    def test_wrong_archive_checksum_stops_before_extraction_and_sandbox(self):
+        self.env['XCODEGEN_DIGEST'] = '0' * 64
+        self.run_step('start')
+        result = self.run_step('wait')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('archive checksum mismatch', result.stdout)
+        self.assertNotIn('xcodegen-unzip', result.stdout)
         self.assertFalse((self.root / 'sandbox-ran').exists())
 
     def test_wrong_xcodegen_is_rejected_before_sandbox(self):

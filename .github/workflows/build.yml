@@ -165,7 +165,7 @@ jobs:
       # The identical macOS host ABI/sandbox check runs in ios_device;
       # the strict iOS aggregate requires that lane as well as this one.
       - run: ./scripts/build-ios-rust.sh simulator
-      - run: cd clients/ios && xcodegen generate
+      - run: cd clients/ios && "$RUNNER_TEMP/ana-xcodegen/bin/xcodegen" generate
       - name: Prepare and build iOS tests once
         timeout-minutes: 10
         run: |
@@ -259,7 +259,7 @@ jobs:
       - name: Verify fresh login DB inside a restricted Apple sandbox
         run: bash scripts/test-mobile-ffi-c.sh
       - run: ./scripts/build-ios-rust.sh device
-      - run: cd clients/ios && xcodegen generate
+      - run: cd clients/ios && "$RUNNER_TEMP/ana-xcodegen/bin/xcodegen" generate
       - name: Build without signing
         run: xcodebuild -project clients/ios/Ana.xcodeproj -scheme Ana -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath clients/ios/DerivedData build
       - name: Package unsigned IPA

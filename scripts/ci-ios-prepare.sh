@@ -44,10 +44,9 @@ except subprocess.TimeoutExpired:
 sys.exit(code)
 PYTHON
     else
-      date -u '+%Y-%m-%dT%H:%M:%SZ iOS brew started'
-      brew install xcodegen
-      date -u '+%Y-%m-%dT%H:%M:%SZ iOS brew finished'
-      test "$(xcodegen --version)" = 'Version: 2.46.0'
+      date -u '+%Y-%m-%dT%H:%M:%SZ iOS XcodeGen install started'
+      bash scripts/install-ios-xcodegen.sh
+      date -u '+%Y-%m-%dT%H:%M:%SZ iOS XcodeGen install finished'
       echo "Reviewed XcodeGen ready after ${SECONDS}s"
       date -u '+%Y-%m-%dT%H:%M:%SZ iOS Swift sandbox started'
       bash scripts/test-ios-system-directory.sh

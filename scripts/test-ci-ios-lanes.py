@@ -333,7 +333,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('python3 scripts/test-ci-ios-lanes.py', job('rust'))
         self.assertIn('components: rustfmt,clippy', job('rust'))
         self.assertIn('cargo fmt --all -- --check', job('rust'))
-        self.assertIn('cargo clippy --workspace --all-targets --locked -- -D warnings', job('rust'))
+        self.assertIn('cargo clippy --workspace --all-targets --all-features --locked -- -D warnings', job('rust'))
 
 
 if __name__ == '__main__':

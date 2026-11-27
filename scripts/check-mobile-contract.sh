@@ -94,7 +94,9 @@ python3 - <<'PYIOS'
 from pathlib import Path
 
 source = Path("clients/ios/Ana/BackupCoordinator.swift").read_text()
-start = source.index("catch {", source.index("do { try await upload.submit"))
+drain = source.index("func drain() async throws {")
+submit = source.index("try await upload.submit(", drain)
+start = source.index("catch {", submit)
 cleanup = source.index('try store.client.transfer(["op": "fail_upload"', start)
 end = source.index("processed += 1", cleanup)
 before_cleanup = source[start:cleanup]

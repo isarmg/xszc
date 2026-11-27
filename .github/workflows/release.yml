@@ -202,9 +202,7 @@ jobs:
       - name: Verify stable Xcode 27 and iOS 27 SDKs
         run: bash scripts/verify-ios-toolchain.sh
       - name: Install and verify the reviewed XcodeGen version
-        run: |
-          brew install xcodegen
-          test "$(xcodegen --version)" = "Version: 2.46.0"
+        run: bash scripts/install-ios-xcodegen.sh
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 26.7.0
@@ -213,7 +211,7 @@ jobs:
           cargo install cargo-cyclonedx --version 0.5.9 --locked
           cargo install cargo-audit --version 0.22.2 --locked
       - run: ./scripts/build-ios-rust.sh
-      - run: cd clients/ios && xcodegen generate
+      - run: cd clients/ios && "$RUNNER_TEMP/ana-xcodegen/bin/xcodegen" generate
       - name: Build without signing
         run: xcodebuild -project clients/ios/Ana.xcodeproj -scheme Ana -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO -derivedDataPath clients/ios/DerivedData build
       - name: Package unsigned IPA
