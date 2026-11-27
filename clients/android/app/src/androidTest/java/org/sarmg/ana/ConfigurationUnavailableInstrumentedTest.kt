@@ -1,5 +1,8 @@
 package org.sarmg.ana
 
+import android.Manifest
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -31,8 +34,16 @@ class ConfigurationUnavailableInstrumentedTest {
 
     @Test fun settingsHandleAKeyLostAfterThePageIsDisplayed() {
         val config = configured()
-        compose.setContent { AppTheme { AppNavigation(context, config) {} } }
-        compose.onNodeWithTag("navigation.3").performClick()
+        compose.setContent { AppTheme {
+            val failure = remember { mutableStateOf<String?>(null) }
+            val message = failure.value
+            if (message == null) {
+                SettingsScreen(context, config, onLogin = {}, onLoggedOut = {},
+                    onConfigFailure = { failure.value = it }, onConfigRetry = {})
+            } else {
+                ConfigurationUnavailableScreen(message) {}
+            }
+        } }
         compose.onNodeWithText("仅 Wi-Fi 上传").performScrollTo().assertIsDisplayed()
         val before = file.readBytes()
         compose.runOnIdle { KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) } }
@@ -42,6 +53,9 @@ class ConfigurationUnavailableInstrumentedTest {
     }
 
     @Test fun navigationHandlesCiphertextDamagedAfterTheAppIsDisplayed() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.grantRuntimePermission(context.packageName, Manifest.permission.READ_MEDIA_IMAGES)
+        automation.grantRuntimePermission(context.packageName, Manifest.permission.READ_MEDIA_VIDEO)
         val config = configured()
         compose.setContent { AppTheme { AppNavigation(context, config) {} } }
         compose.onNodeWithTag("navigation.3").assertIsDisplayed()
