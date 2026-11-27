@@ -232,7 +232,9 @@ class GalleryNavigationInstrumentedTest {
         compose.onNodeWithTag("account.username").performTextInput("test-user")
         compose.onNodeWithTag("account.password").performTextInput("test-password")
         compose.onNodeWithTag("account.submit").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("服务器地址必须使用 HTTPS").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithText("请输入 HTTPS 服务器根地址，例如 https://backup.example.com").fetchSemanticsNodes().isNotEmpty()
+        }
         screenshot("native-login")
         compose.onNodeWithTag("account.cancel").performClick()
         compose.onNodeWithText("设置").performClick()

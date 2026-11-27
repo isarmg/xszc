@@ -23,29 +23,16 @@ class ConfigurationUnavailableInstrumentedTest {
     private val name = "config-ui-test-${UUID.randomUUID()}"
     private val alias get() = "${context.packageName}.$name.aes-gcm"
     private val file get() = File(context.noBackupFilesDir, "$name.bin")
-    private var profile: String? = null
-    private fun configured(): SecureConfig = SecureConfig(context, name).also {
-        it.verifyWritable()
-        profile = it.profile
-    }
+    private fun configured(): SecureConfig = SecureConfig(context, name).also { it.verifyWritable() }
     @After fun cleanThisTestState() {
         KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) }
         listOf(file, File("${file.path}.new"), File("${file.path}.bak")).forEach { it.delete() }
-        profile?.let { key ->
-            val database = File(context.dataDir, "databases/$key")
-            if (database.exists()) {
-                runCatching { NativeBridgeV1.close(TransferStore.open(context, key).handle) }
-                database.deleteRecursively()
-                File(context.dataDir, "files/$key").deleteRecursively()
-            }
-        }
     }
 
     @Test fun settingsHandleAKeyLostAfterThePageIsDisplayed() {
         val config = configured()
-        compose.setContent { AppTheme {
-            SettingsScreen(context, config, {}, {}, {}, {})
-        } }
+        compose.setContent { AppTheme { AppNavigation(context, config) {} } }
+        compose.onNodeWithTag("navigation.3").performClick()
         compose.onNodeWithText("仅 Wi-Fi 上传").performScrollTo().assertIsDisplayed()
         val before = file.readBytes()
         compose.runOnIdle { KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(alias) } }
