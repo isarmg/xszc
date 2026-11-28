@@ -178,10 +178,10 @@ class EncryptedConfigStoreTest {
     @Test fun rejectedBusinessValidationKeepsItsClassificationAndHasNoStorageSideEffects() {
         val f = Fixture()
         val failure = assertThrows(IllegalStateException::class.java) {
-            f.open().update { it.set("token", "uncommitted"); check(false) { "配对信息已改变" } }
+            f.open().update { it.set("token", "uncommitted"); check(false) { "账户已改变，请重新操作" } }
         }
         assertFalse(failure is ConfigStorageException)
-        assertEquals("配对信息已改变", failure.message)
+        assertEquals("账户已改变，请重新操作", failure.message)
         assertEquals(0, f.keys.creations)
         assertNull(f.file.bytes)
     }
