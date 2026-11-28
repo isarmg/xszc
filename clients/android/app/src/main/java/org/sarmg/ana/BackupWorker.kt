@@ -50,7 +50,7 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
         var snapshot = BackupSnapshot(state = "running", message = "正在准备备份", lastRunAt = System.currentTimeMillis())
         try {
             val api = BackupApi(credentials.server, credentials.token)
-            check(credentials.token.isNotBlank() && credentials.accountId.isNotBlank() && credentials.deviceId.isNotBlank()) {
+            check(credentials.accountId.isNotBlank() && credentials.deviceId.isNotBlank()) {
                 "请重新输入用户名和密码登录"
             }
             val accountId = credentials.accountId
@@ -285,7 +285,8 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
 
     private fun createForegroundInfo(message: String, completed: Int, total: Int): ForegroundInfo {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "媒体备份", NotificationManager.IMPORTANCE_LOW))
+        val appName = applicationContext.getString(R.string.app_name)
+        manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, "$appName 备份", NotificationManager.IMPORTANCE_LOW))
         val contentIntent = PendingIntent.getActivity(
             applicationContext,
             0,
@@ -294,7 +295,7 @@ class BackupWorker(context: Context, parameters: WorkerParameters) : CoroutineWo
         )
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("媒体备份")
+            .setContentTitle(appName)
             .setContentText(message)
             .setContentIntent(contentIntent)
             .setOnlyAlertOnce(true)

@@ -23,4 +23,4 @@
 - 浏览缓存可重建，上传分块与队列属于待传状态，分别管理。
 - 当前功能集中于备份和图库，没有人脸识别、AI 分类、共享相册或复杂编辑。
 
-服务端配额、对象存储、管理账户与部署由 [ana-server](https://github.com/isarmg/xszs/tree/main/docs)负责。
+服务端配额、对象存储、管理账户与部署由 [ana-server](https://github.com/isarmg/ana-server/tree/main/docs)负责。

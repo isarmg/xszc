@@ -12,7 +12,7 @@ import sys
 sys.dont_write_bytecode=True
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 
-PRODUCTS = {'xcos', 'xczs', 'xocs', 'xscs', 'xsos', 'xszs'}
+PRODUCTS = {'ana-server', 'xcos', 'xczs', 'xocs', 'xscs', 'xsos'}
 MANIFEST = 'share/package.json'
 CHECKSUM = 'share/package.sha256'
 MAX_FILES = 4096

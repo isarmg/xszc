@@ -64,7 +64,6 @@ internal fun AccountDialog(context: Context, config: SecureConfig, onDismiss: ()
                     config.verifyWritable()
                     val previous = config.rememberedDevice(address, account)
                     val token = api.login(account, secret, Build.MODEL, previous?.deviceId)
-                    check(token.isNotBlank()) { "服务器没有返回有效登录凭据" }
                     check(config.connection() == expected) { "账户已改变，请重新登录" }
                     val boundAddress = previous?.takeIf { it.accountId.equals(api.accountId, true) &&
                         it.deviceId.equals(api.deviceId, true) }?.server ?: address

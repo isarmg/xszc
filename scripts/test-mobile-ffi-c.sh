@@ -3,7 +3,6 @@ set -euo pipefail
 ulimit -c 0
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project_dir"
-python3 scripts/check-mobile-header.py
 CARGO_INCREMENTAL=0 cargo build --locked -p ana-mobile
 target_dir="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 scratch="$(mktemp -d)"

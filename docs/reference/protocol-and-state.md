@@ -1,6 +1,6 @@
 # 移动协议与状态身份
 
-本页面向修改 Rust 核心或平台宿主的开发者。线上 DTO 来自仓库内的 `crates/protocol/`；账户管理、管理 Web 与服务端存储实现见 [ana-server 文档](https://github.com/isarmg/xszs/tree/main/docs)。
+本页面向修改 Rust 核心或平台宿主的开发者。线上 DTO 来自仓库内的 `crates/protocol/`；账户管理、管理 Web 与服务端存储实现见 [ana-server 文档](https://github.com/isarmg/ana-server/tree/main/docs)。
 
 ## 身份
 

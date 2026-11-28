@@ -15,7 +15,7 @@ SEMVER = re.compile(
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
 )
 IDENTIFIER = re.compile(r"[a-z][a-z0-9-]{0,62}")
-SERVER_PRODUCTS = frozenset({"xczs", "xsos", "xscs", "xszs", "xcos", "xocs"})
+SERVER_PRODUCTS = frozenset({"ana-server", "xczs", "xsos", "xscs", "xcos", "xocs"})
 OFFLINE_MAINTENANCE_PRODUCTS = frozenset({"xssi", "xssc"})
 OFFLINE_MAINTENANCE_TARGET = "x86_64-unknown-linux-gnu"
 CLIENT_LIMIT_KEYS = {"max_record_bytes", "max_spool_bytes", "max_spool_entries"}

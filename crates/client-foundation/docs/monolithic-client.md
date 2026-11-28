@@ -54,7 +54,7 @@ xcsc 的 Rust 部分只有根目录一个包 `xcsc`、一个 `Cargo.toml` 和一
 `mobile-client` 或 `offline-maintenance` 能力配置。根门禁拒绝子 Cargo 包、
 工作区外壳；消费门禁核对所有 manifest、别名、target、patch/replace
 与实际 Cargo.lock，要求唯一官方 xcsc 包、精确版本和完整 Git revision。
-职责由实际产品、能力配置和源码依赖核验，不按名称后缀推断。xczs、xsos、xscs、xszs、xcos、xocs 等服务端不能消费本库。xssi/xssc 只能声明 Linux x86_64 GNU 的 `offline-maintenance` 能力配置，必须实际启用同名 feature，不能声明桌面或移动能力、移动 feature、HTTP/Web adapter 或客户端队列限制。通用测试夹具保持自己的标识。
+职责由实际产品、能力配置和源码依赖核验，不按名称后缀推断。xczs、xsos、xscs、ana-server、xcos、xocs 等服务端不能消费本库。xssi/xssc 只能声明 Linux x86_64 GNU 的 `offline-maintenance` 能力配置，必须实际启用同名 feature，不能声明桌面或移动能力、移动 feature、HTTP/Web adapter 或客户端队列限制。通用测试夹具保持自己的标识。
 
 ## 开发检查
 

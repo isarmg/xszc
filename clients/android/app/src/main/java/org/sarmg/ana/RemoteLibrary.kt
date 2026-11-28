@@ -109,7 +109,7 @@ object RemoteLibrary {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, resource.filename)
                 put(MediaStore.MediaColumns.MIME_TYPE, resource.mimeType)
                 put(MediaStore.MediaColumns.RELATIVE_PATH,
-                    if (resource.mimeType.startsWith("video/")) "Movies/Ana Restored" else "Pictures/Ana Restored")
+                    if (resource.mimeType.startsWith("video/")) "Movies/ana Restored" else "Pictures/ana Restored")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             checkCurrent()

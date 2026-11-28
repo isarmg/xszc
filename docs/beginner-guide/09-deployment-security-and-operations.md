@@ -9,4 +9,4 @@ Android 生成最低 Android 17/API 37、同签名、仅 arm64-v8a 的正式 APK
 - [安装、更新和卸载](../platform-setup.md)
 - [队列与凭据维护](../operations.md)
 
-服务端的反向代理、systemd、数据库和存储管理使用 [ana-server 文档](https://github.com/isarmg/xszs/tree/main/docs)。
+服务端的反向代理、systemd、数据库和存储管理使用 [ana-server 文档](https://github.com/isarmg/ana-server/tree/main/docs)。

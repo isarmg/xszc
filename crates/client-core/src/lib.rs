@@ -55,7 +55,7 @@ impl ClientError {
                 return stage.public_message();
             }
         }
-        "MBDB-OPEN：无法读取本地备份记录"
+        "ANA-DB-OPEN：无法读取本地备份记录"
     }
 }
 

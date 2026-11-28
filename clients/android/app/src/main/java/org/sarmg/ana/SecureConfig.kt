@@ -77,7 +77,7 @@ class SecureConfig internal constructor(context: Context, name: String) {
     }
 
     private val backupKeys = listOf("auto_backup", "wifi_only", "charging_only", "backup_medias", "backup_videos",
-        "camera_only", "selected_album_ids", "album_selection_configured", "backup_state",
+        "camera_only", "selected_album_ids", "backup_state",
         "backup_message", "last_run_at", "last_success_at", "last_discovered", "last_completed", "last_failed",
         "last_uploaded_bytes", "current_item")
 
@@ -113,7 +113,6 @@ class SecureConfig internal constructor(context: Context, name: String) {
         values.set(MobileContractV1.TOKEN_KEY, token)
     }
 
-    val isLoggedIn: Boolean get() = connection().token.isNotBlank()
     fun logout(expected: Connection? = null) = store.update {
         check(expected == null || connection(it) == expected) { "账户已改变，请重新操作" }
         switchBackupSettings(it, unpairedProfileKey())
@@ -124,32 +123,6 @@ class SecureConfig internal constructor(context: Context, name: String) {
     }
     fun verifyWritable() = store.update { it.set("storage_verified", true) }
 
-    var autoBackup: Boolean
-        get() = store.read { it.boolean("auto_backup", false) }
-        set(value) = store.update { it.set("auto_backup", value) }
-    var wifiOnly: Boolean
-        get() = store.read { it.boolean("wifi_only", true) }
-        set(value) = store.update { it.set("wifi_only", value) }
-    var chargingOnly: Boolean
-        get() = store.read { it.boolean("charging_only", false) }
-        set(value) = store.update { it.set("charging_only", value) }
-    var backupPhotos: Boolean
-        get() = store.read { it.boolean("backup_medias", true) }
-        set(value) = store.update { it.set("backup_medias", value) }
-    var backupVideos: Boolean
-        get() = store.read { it.boolean("backup_videos", true) }
-        set(value) = store.update { it.set("backup_videos", value) }
-    var cameraOnly: Boolean
-        get() = store.read { it.boolean("camera_only", true) }
-        set(value) = store.update { it.set("camera_only", value) }
-    var selectedAlbumIds: Set<String>
-        get() = store.read(::albums)
-        set(value) = store.update {
-            val array = JSONArray()
-            value.sorted().forEach(array::put)
-            it.set("selected_album_ids", array.toString())
-            it.set("album_selection_configured", true)
-        }
     fun saveBackupPreferences(auto: Boolean, wifi: Boolean, charging: Boolean, photos: Boolean,
         videos: Boolean, camera: Boolean, albums: Set<String>) = store.update {
         it.set("auto_backup", auto)
@@ -161,10 +134,7 @@ class SecureConfig internal constructor(context: Context, name: String) {
         val array = JSONArray()
         albums.sorted().forEach(array::put)
         it.set("selected_album_ids", array.toString())
-        it.set("album_selection_configured", true)
     }
-    val albumSelectionConfigured: Boolean
-        get() = store.read { it.boolean("album_selection_configured", false) }
 
     fun snapshot(): BackupSnapshot = store.read {
         BackupSnapshot(state = it.string("backup_state", "idle"),

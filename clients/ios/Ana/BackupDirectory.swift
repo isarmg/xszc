@@ -31,7 +31,7 @@ enum BackupDirectory {
 
     private static func failure(_ stage: String, _ code: Int32) -> NSError {
         NSError(domain: "Ana.BackupDirectory", code: Int(code), userInfo: [
-            NSLocalizedDescriptionKey: "MBDB-DIRECTORY-\(stage)：无法访问系统备份目录（系统错误 \(code)）"
+            NSLocalizedDescriptionKey: "ANA-DB-DIRECTORY-\(stage)：无法访问系统备份目录（系统错误 \(code)）"
         ])
     }
 }

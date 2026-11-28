@@ -186,13 +186,13 @@ class ClientPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
             manifest = product / "xcsc-client.toml"
-            for identifier in ("xczs", "xsos", "xscs", "xszs", "xcos", "xocs"):
+            for identifier in ("ana-server", "xczs", "xsos", "xscs", "xcos", "xocs"):
                 with self.subTest(server=identifier):
                     for profile in ("desktop-client", "offline-maintenance"):
                         manifest.write_text(VALID_MANIFEST.replace("fixture-product", identifier) + component.replace("desktop-client", profile))
                         with self.assertRaisesRegex(ConformanceError, "client-role"):
                             verify_manifest(product, ROOT)
-            for identifier in ("xsoc", "xscc", "xszc", "xcoc", "xcsc", "xabs", "fixture-product"):
+            for identifier in ("ana", "xsoc", "xscc", "xcoc", "xcsc", "xabs", "fixture-product"):
                 with self.subTest(client=identifier):
                     manifest.write_text(VALID_MANIFEST.replace("fixture-product", identifier) + component)
                     self.assertEqual(verify_manifest(product, ROOT)["product_id"], identifier)

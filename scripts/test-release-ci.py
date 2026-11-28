@@ -10,7 +10,7 @@ spec = importlib.util.spec_from_file_location('release_ci', ROOT / 'scripts/chec
 ci = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci)
 SHA = 'a' * 40
-REPO = 'sarmg/ana'
+REPO = 'isarmg/ana'
 
 
 def run(run_id=10, **changes):
@@ -83,6 +83,7 @@ class ReleaseCITests(unittest.TestCase):
         release = (ROOT / '.github/workflows/release.yml').read_text()
         validate = release.split('  validate:', 1)[1].split('\n  android:', 1)[0]
         self.assertIn('actions: read', validate)
+        self.assertIn('fetch-tags: true', validate)
         self.assertIn('python3 scripts/check-release-ci.py --sha "$(git rev-parse HEAD)"', validate)
         self.assertIn('needs: validate', release.split('\n  android:', 1)[1].split('\n  ios:', 1)[0])
         self.assertIn('needs: validate', release.split('\n  ios:', 1)[1].split('\n  publish:', 1)[0])

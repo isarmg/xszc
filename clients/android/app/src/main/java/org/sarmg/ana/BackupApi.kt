@@ -7,7 +7,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
 import java.util.concurrent.TimeUnit
@@ -30,14 +29,6 @@ class BackupApi(
     private val jsonType = "application/json".toMediaType()
     private val binaryType = "application/octet-stream".toMediaType()
 
-    fun health(): Boolean {
-        val request = Request.Builder().url("$serverUrl/healthz").get().build()
-        client.newCall(request).execute().use {
-            if (it.code != 204) error("服务端健康检查失败: ${it.code}")
-            return true
-        }
-    }
-
     fun login(username: String, password: String, deviceName: String, previousDevice: String?): String {
         val printable = deviceName.codePoints().filter { !Character.isISOControl(it) }.limit(64).toArray()
         val name = String(printable, 0, printable.size).trim().ifBlank { "Android" }
@@ -57,9 +48,11 @@ class BackupApi(
             if (it.code == 409) error("设备登录受限，请联系管理员检查设备状态和数量")
             if (!it.isSuccessful) error("登录失败（HTTP ${it.code}），请稍后重试")
             val result = JSONObject(text)
+            val token = result.getString("bearer_token")
+            check(token.isNotBlank()) { "服务器没有返回有效登录凭据" }
             accountId = result.getString("account_id"); deviceId = result.getString("device_id")
-            bearerToken = result.getString("bearer_token")
-            return bearerToken
+            bearerToken = token
+            return token
         }
     }
 
@@ -207,29 +200,6 @@ class BackupApi(
                 }
             }
         })
-    }
-
-    fun downloadBytes(path: String, maximum: Long = 8L * 1024 * 1024): ByteArray {
-        require(maximum in 1L..Int.MAX_VALUE.toLong()) { "下载大小上限无效" }
-        val request = authenticated(Request.Builder().url(resolve(path))).get().build()
-        client.newCall(request).execute().use {
-            if (!it.isSuccessful) error("下载失败: ${it.code}")
-            val declared = it.body.contentLength()
-            check(declared < 0 || declared <= maximum) { "缩略图超过下载上限" }
-            val output = ByteArrayOutputStream()
-            it.body.byteStream().use { input ->
-                val buffer = ByteArray(64 * 1024)
-                var count = 0L
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    count += read
-                    check(count <= maximum) { "缩略图超过下载上限" }
-                    output.write(buffer, 0, read)
-                }
-            }
-            return output.toByteArray()
-        }
     }
 
     private fun requireSuccess(response: okhttp3.Response, text: String) {

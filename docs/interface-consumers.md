@@ -13,7 +13,7 @@ Android 与 iOS 当前都消费云端时间线、详情、筛选、相册、收�
 - `/v1/api-keys`：API Key 用于额外客户端和自动化，原值只在创建时返回；不由日常图库代管。
 - `/v1/audit-events`：账户审计由持账户凭据的诊断工具分页读取，不与服务端管理员审计混合。
 
-这些边界与服务端的 [接口与消费者边界](https://github.com/isarmg/xszs/blob/main/docs/interface-consumers.md)
+这些边界与服务端的 [接口与消费者边界](https://github.com/isarmg/ana-server/blob/main/docs/interface-consumers.md)
 保持一致。移动端不得使用管理员 Cookie，也不得为了显示账户接口而持有服务端管理员密码。
 
 ### 上传操作标识

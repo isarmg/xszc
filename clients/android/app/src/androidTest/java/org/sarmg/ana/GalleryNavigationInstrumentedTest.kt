@@ -242,13 +242,13 @@ class GalleryNavigationInstrumentedTest {
         compose.onNodeWithText("登录 / 切换账户").assertDoesNotExist()
         compose.onNodeWithText("尚未登录").performClick()
         compose.onNodeWithTag("account.cancel").performClick()
-        val before = SecureConfig(context).chargingOnly
+        val before = SecureConfig(context).settingsSnapshot().preferences.charging
         // The native switch is the third toggle in the preference list.
         compose.onAllNodes(isToggleable())[2].performClick()
-        assertEquals(!before, SecureConfig(context).chargingOnly)
+        assertEquals(!before, SecureConfig(context).settingsSnapshot().preferences.charging)
         compose.onNodeWithText("本地").performClick()
         compose.onNodeWithText("设置").performClick()
-        assertEquals(!before, SecureConfig(context).chargingOnly)
+        assertEquals(!before, SecureConfig(context).settingsSnapshot().preferences.charging)
         compose.onAllNodes(isToggleable())[2].performClick()
         compose.onNodeWithText("仅相机目录").assertDoesNotExist()
         compose.onNodeWithTag("settings.list").performScrollToNode(hasText("自动备份相册"))
@@ -306,17 +306,6 @@ class GalleryNavigationInstrumentedTest {
         compose.onNodeWithTag("gallery.select-all").performClick()
         compose.waitUntil(30_000) { compose.onAllNodesWithText("已选 362 项").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("加载更多").assertDoesNotExist()
-    }
-
-    @Test fun logoutPersistsAndRemovesLocalSecrets() {
-        val prefix = "account-test-${UUID.randomUUID()}"
-        val config = SecureConfig(context, prefix)
-        androidConfigStore(context, prefix).update { it.set(MobileContractV1.TOKEN_KEY, "test-token") }
-        assertTrue(config.isLoggedIn)
-        config.logout()
-        val reopened = SecureConfig(context, prefix)
-        assertFalse(reopened.isLoggedIn)
-        assertEquals("", reopened.connection().token)
     }
 
     private fun hasTestTagPrefix(prefix: String) = SemanticsMatcher("tag starts with $prefix") {

@@ -30,6 +30,6 @@ xcsc 是编译进桌面、移动和离线工具的 Rust 公共库。接入从一
 - [专题参考](reference/README.md)：存储、凭据、进程、FFI 和架构细节
 - [发布来源](split-origin.md)与 [1.0.0 发布说明](releases/1.0.0.md)
 
-使用成品客户端时，请查看对应产品的安装文档：[xsoc](https://github.com/isarmg/xsoc/blob/main/docs/platform-setup.md)、[xscc](https://github.com/isarmg/xscc/blob/main/docs/platform-setup.md)、[xcoc](https://github.com/isarmg/xcoc/blob/main/docs/platform-setup.md)、[xszc](https://github.com/isarmg/xszc/blob/main/docs/platform-setup.md)。
+使用成品客户端时，请查看对应产品的安装文档：[xsoc](https://github.com/isarmg/xsoc/blob/main/docs/platform-setup.md)、[xscc](https://github.com/isarmg/xscc/blob/main/docs/platform-setup.md)、[xcoc](https://github.com/isarmg/xcoc/blob/main/docs/platform-setup.md)、[ana](../../../docs/platform-setup.md)。
 
 代码采用 [Apache License 2.0](../LICENSE)。

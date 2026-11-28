@@ -30,6 +30,6 @@ cargo +1.99.0 check --locked -p xcsc --all-features --lib --target aarch64-apple
 - 签名、Keychain 或 entitlement 错误：按产品指南处理；它们不属于公共库的 Rust 编译检查。
 - macOS 沙箱回归可按 [macOS 指南](macos.md#私有路径与原生验证)运行，但 iOS 的实际应用容器仍需设备执行证据。
 
-应用构建与安装请用 [xszc iOS 指南](https://github.com/isarmg/xszc/blob/main/docs/platforms/ios.md)或 [xcoc iOS 指南](https://github.com/isarmg/xcoc/blob/main/docs/platforms/ios.md)。产品决定最低 iOS 版本与签名要求。
+应用构建与安装请用 [ana iOS 指南](../../../../docs/platforms/ios.md)或 [xcoc iOS 指南](https://github.com/isarmg/xcoc/blob/main/docs/platforms/ios.md)。产品决定最低 iOS 版本与签名要求。
 
 [公共开发检查](../development.md) · [选择其他平台](../README.md#选择接入平台)

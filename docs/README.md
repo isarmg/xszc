@@ -26,4 +26,4 @@ Linux、Windows 和 macOS 是开发机选项；本产品仅提供 Android 和 iO
 - [开发者导读](beginner-guide/README.md)与[参考索引](reference/README.md)
 - [1.0.0 当前基线说明](releases/1.0.0.md)
 
-服务端安装和管理使用 [ana-server 文档](https://github.com/isarmg/xszs/tree/main/docs)。本仓库维护移动核心、FFI 与两端原生应用。第一方代码、文档和资源采用 [Apache License 2.0](../LICENSE)。
+服务端安装和管理使用 [ana-server 文档](https://github.com/isarmg/ana-server/tree/main/docs)。本仓库维护移动核心、FFI 与两端原生应用。第一方代码、文档和资源采用 [Apache License 2.0](../LICENSE)。

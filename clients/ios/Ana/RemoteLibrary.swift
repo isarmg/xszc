@@ -195,17 +195,6 @@ struct RemoteLibrary {
         return try decoder.decode([DuplicateGroup].self, from: data)
     }
 
-    func thumbnailData(for asset: RemoteAsset) async throws -> Data? {
-        guard let thumbnail = asset.thumbnail else { return nil }
-        let maximum = 8 * 1024 * 1024
-        guard thumbnail.contentSize <= UInt64(maximum) else {
-            throw CoordinatorFailure.message("缩略图超过下载上限")
-        }
-        let file = try await imageFile(thumbnail, maximum: Int64(maximum))
-        defer { try? FileManager.default.removeItem(at: file) }
-        return try Data(contentsOf: file)
-    }
-
     func trash(asset: RemoteAsset) async throws {
         try await send(path: "/v1/assets/\(asset.assetId)/trash", method: "POST")
     }

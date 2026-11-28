@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
@@ -30,30 +31,33 @@ const PRODUCT_METADATA_SQL: &str = "CREATE TABLE product_metadata (
     schema_sha256 TEXT NOT NULL
 )";
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub(super) enum OpenStage {
-    #[error("MBDB-PATH：无法访问备份目录")]
     Path,
-    #[error("MBDB-CREATE：无法创建备份数据库")]
     Create,
-    #[error("MBDB-VALIDATE：本地备份数据库校验失败")]
     Validate,
-    #[error("MBDB-CONNECT：无法连接本地备份数据库")]
     Connect,
-    #[error("MBDB-CONFIGURE：无法启用数据库写入")]
     Configure,
 }
 impl OpenStage {
     pub(super) fn public_message(&self) -> &'static str {
         match self {
-            Self::Path => "MBDB-PATH：无法访问备份目录",
-            Self::Create => "MBDB-CREATE：无法创建备份数据库",
-            Self::Validate => "MBDB-VALIDATE：本地备份数据库校验失败",
-            Self::Connect => "MBDB-CONNECT：无法连接本地备份数据库",
-            Self::Configure => "MBDB-CONFIGURE：无法启用数据库写入",
+            Self::Path => "ANA-DB-PATH：无法访问备份目录",
+            Self::Create => "ANA-DB-CREATE：无法创建备份数据库",
+            Self::Validate => "ANA-DB-VALIDATE：本地备份数据库校验失败",
+            Self::Connect => "ANA-DB-CONNECT：无法连接本地备份数据库",
+            Self::Configure => "ANA-DB-CONFIGURE：无法启用数据库写入",
         }
     }
 }
+
+impl fmt::Display for OpenStage {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.public_message())
+    }
+}
+
+impl std::error::Error for OpenStage {}
 
 pub(super) fn open_current(path: &Path) -> anyhow::Result<Connection> {
     require_client_database_path(path)?;

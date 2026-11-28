@@ -134,10 +134,10 @@
         "properties": {
           "product_id": {
             "enum": [
+              "ana-server",
               "xczs",
               "xsos",
               "xscs",
-              "xszs",
               "xcos",
               "xocs"
             ]

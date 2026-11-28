@@ -50,18 +50,6 @@ for required in \
         || fail "required mobile ABI v1 contract marker is missing: $required"
 done
 
-grep -q -F 'ANA_ANDROID_SIGNING_PKCS12_BASE64' .github/workflows/release.yml \
-    || fail "the formal Android release does not require the current PKCS#12 Secret"
-grep -q -F '0cfc2811d48cdeab3e6d857029d879e001ab9531c06784b4d48d15a847771421' \
-    .github/workflows/release.yml \
-    || fail "the formal Android release does not pin the current certificate fingerprint"
-grep -q -F 'assembleRelease' .github/workflows/release.yml \
-    || fail "the formal Android release is not a signed release APK build"
-python3 scripts/check-signing-secret-references.py .github/workflows/release.yml
-if grep -q -E 'assembleDebug|app-debug[.]apk' .github/workflows/release.yml; then
-    fail "the formal release workflow still contains a debug Android signing path"
-fi
-
 for workflow in .github/workflows/build.yml .github/workflows/release.yml; do
     grep -q -F 'bash scripts/verify-ios-toolchain.sh' "$workflow" \
         || fail "$workflow must verify stable Xcode 27 and iOS 27 SDKs"

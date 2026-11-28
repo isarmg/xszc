@@ -33,6 +33,6 @@ cargo +1.99.0 test --locked -p xcsc --features jni \
 4. 动态库加载失败时核对设备 ABI、产品打包的 `.so`、当前导出名及版本；不要用宿主 JVM 测试替代设备库加载测试。
 5. 在目标设备验证打开、正常请求、取消、关闭和重开，并保留脱敏错误及实际运行平台。
 
-应用安装和签名请用 [xszc Android 指南](https://github.com/isarmg/xszc/blob/main/docs/platforms/android.md)或 [xcoc Android 指南](https://github.com/isarmg/xcoc/blob/main/docs/platforms/android.md)。共享 Rust 检查见[开发指南](../development.md)。
+应用安装和签名请用 [ana Android 指南](../../../../docs/platforms/android.md)或 [xcoc Android 指南](https://github.com/isarmg/xcoc/blob/main/docs/platforms/android.md)。共享 Rust 检查见[开发指南](../development.md)。
 
 [能力配置](../configuration.md) · [选择其他平台](../README.md#选择接入平台)

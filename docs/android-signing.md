@@ -4,7 +4,7 @@
 当前发布证书 SHA-256 为 `0cfc2811d48cdeab3e6d857029d879e001ab9531c06784b4d48d15a847771421`。
 正式 APK 使用这一固定签名身份；Debug APK 仅用于开发验证。
 
-GitHub 仓库 `isarmg/xszc` 的 `android-signing` 环境保存两个秘密配置：
+GitHub 仓库 `isarmg/ana` 的 `android-signing` 环境保存两个秘密配置：
 
 - `ANA_ANDROID_SIGNING_PKCS12_BASE64`
 - `ANA_ANDROID_SIGNING_PKCS12_PASSWORD`

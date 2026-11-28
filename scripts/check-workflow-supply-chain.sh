@@ -191,6 +191,7 @@ for required_release_marker in \
   'environment: android-signing' \
   'secrets.ANA_ANDROID_SIGNING_PKCS12_BASE64' \
   'secrets.ANA_ANDROID_SIGNING_PKCS12_PASSWORD' \
+  'ANA_ANDROID_SIGNING_CERT_SHA256: 0cfc2811d48cdeab3e6d857029d879e001ab9531c06784b4d48d15a847771421' \
   'assembleRelease' \
   'apksigner' \
   'org.sarmg.ana'; do

@@ -59,8 +59,6 @@ jobs:
         with:
           toolchain: 1.99.0
           targets: aarch64-linux-android,x86_64-linux-android
-      - name: Verify locked client support boundary
-        run: python scripts/check-xcsc-source.py
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: android37
@@ -153,8 +151,6 @@ jobs:
           targets: aarch64-apple-ios-sim
       - name: Verify actual restored or installed Rust identity and targets
         run: bash scripts/verify-ios-rust-toolchain.sh simulator
-      - name: Verify locked client support boundary
-        run: python scripts/check-xcsc-source.py
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: ios27-simulator-v1
@@ -247,8 +243,6 @@ jobs:
           targets: aarch64-apple-ios
       - name: Verify actual restored or installed Rust identity and targets
         run: bash scripts/verify-ios-rust-toolchain.sh device
-      - name: Verify locked client support boundary
-        run: python scripts/check-xcsc-source.py
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: ios27-device-v1

@@ -29,18 +29,6 @@ class TagActionsInstrumentedTest {
         return BackupApi("https://backup.example.test", "fixture-token", client)
     }
 
-    @Test fun existingTagCanBeAddedToAnotherPhotoWithoutCreatingItAgain() {
-        val requests = mutableListOf<String>()
-        api(requests) { request ->
-            when (request.method + " " + request.url.encodedPath) {
-                "GET /v1/tags" -> 200 to """[{"tag_id":"existing","name":"旅行"}]"""
-                "POST /v1/tags/existing/assets/photo" -> 204 to ""
-                else -> error("Unexpected duplicate tag creation")
-            }
-        }.addTag(asset(), " 旅行 ")
-        assertEquals(listOf("GET /v1/tags", "POST /v1/tags/existing/assets/photo"), requests)
-    }
-
     @Test fun fifteenthTagAllowsCreationAndAttachmentOfSixteenth() {
         val requests = mutableListOf<String>()
         api(requests) { request ->
@@ -83,16 +71,18 @@ class TagActionsInstrumentedTest {
         assertEquals(4, requests.size)
     }
 
-    @Test fun globalTagCountDoesNotLimitOnePhotosTags() {
+    @Test fun existingTagIsReusedEvenAboveThePerPhotoLimitGlobally() {
         val requests = mutableListOf<String>()
-        val tags = (1..20).joinToString(",", "[", "]") { """{"tag_id":"id-$it","name":"tag-$it"}""" }
+        val tags = ((1..19).map { """{"tag_id":"id-$it","name":"tag-$it"}""" } +
+            """{"tag_id":"existing","name":"旅行"}""").joinToString(",", "[", "]")
         api(requests) { request ->
-            if (request.method == "GET") 200 to tags else {
-                assertEquals("/v1/tags/id-20/assets/photo", request.url.encodedPath)
-                204 to ""
+            when (request.method + " " + request.url.encodedPath) {
+                "GET /v1/tags" -> 200 to tags
+                "POST /v1/tags/existing/assets/photo" -> 204 to ""
+                else -> error("Unexpected duplicate tag creation")
             }
-        }.addTag(asset(), "tag-20")
-        assertEquals(2, requests.size)
+        }.addTag(asset(), " 旅行 ")
+        assertEquals(listOf("GET /v1/tags", "POST /v1/tags/existing/assets/photo"), requests)
     }
 
     @Test fun exactCaseMatchUsesTheCorrectTag() {

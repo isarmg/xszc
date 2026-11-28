@@ -311,8 +311,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn('targets: ' + target + '\n', lane)
             self.assertNotIn('components:', lane)
             self.assertIn('verify-ios-rust-toolchain.sh ' + mode + '\n', lane)
-            for gate in ['verify-ios-rust-toolchain.sh', 'check-xcsc-source.py',
-                         'verify-ios-toolchain.sh', 'ci-ios-prepare.sh wait']:
+            for gate in ['verify-ios-rust-toolchain.sh', 'verify-ios-toolchain.sh', 'ci-ios-prepare.sh wait']:
                 self.assertIn(gate, lane)
         self.assertIn('-only-testing:AnaTests ', simulator)
         self.assertNotIn('-skip-testing:', simulator)
@@ -331,6 +330,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn('python3 scripts/check-ios-test-results.py clients/ios/' + bundle,
                           simulator)
         self.assertIn('python3 scripts/test-ci-ios-lanes.py', job('rust'))
+        self.assertIn('python scripts/check-xcsc-source.py', job('rust'))
         self.assertIn('components: rustfmt,clippy', job('rust'))
         self.assertIn('cargo fmt --all -- --check', job('rust'))
         self.assertIn('cargo clippy --workspace --all-targets --all-features --locked -- -D warnings', job('rust'))

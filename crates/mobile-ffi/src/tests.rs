@@ -74,14 +74,14 @@ fn open_failures_expose_only_static_stage_diagnostics() {
         .join(MOBILE_DATABASE_FILENAME);
     let error = open_impl(missing.to_str().unwrap(), &config()).unwrap_err();
     assert_eq!(error.status(), ffi::XCSC_FFI_INTERNAL_ERROR);
-    assert_eq!(error.public_message(), "MBDB-PATH：无法访问备份目录");
+    assert_eq!(error.public_message(), "ANA-DB-PATH：无法访问备份目录");
     assert!(!error.public_message().contains("private-account-secret"));
     let foreign = dir.path().join(MOBILE_DATABASE_FILENAME);
     std::fs::write(&foreign, b"private-database-content").unwrap();
     let error = open_impl(foreign.to_str().unwrap(), &config()).unwrap_err();
     assert_eq!(
         error.public_message(),
-        "MBDB-VALIDATE：本地备份数据库校验失败"
+        "ANA-DB-VALIDATE：本地备份数据库校验失败"
     );
     assert_eq!(std::fs::read(foreign).unwrap(), b"private-database-content");
 }
