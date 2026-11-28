@@ -1,4 +1,4 @@
-//! Credential transactions, independent of pairing wire and product journals.
+//! Credential transactions independent of authentication protocols and product journals.
 
 use std::sync::Arc;
 
@@ -35,7 +35,7 @@ pub enum CredentialMutation {
 /// each call and serialize against every writer of the same credential state.
 /// Invalid storage or unsupported data returns an error without repair.
 ///
-/// Products own revision identities, prepared rotation journals, pairing wire,
+/// Products own revision identities, prepared rotation journals, authentication,
 /// and crash recovery. The interface does not freeze any one product's protocol.
 pub trait CredentialStore {
     type Revision: Clone + Eq;
@@ -53,7 +53,7 @@ pub trait CredentialStore {
     fn replace(&mut self, replacement: Self::Replacement) -> Result<(), Self::Error>;
 
     /// Durably block delivery only for the exact revision of the rejected
-    /// in-flight snapshot. A newer pending pairing does not change the revision
+    /// in-flight snapshot. A pending replacement does not change the revision
     /// of a still-active credential; an incomplete rotation must not be touched.
     /// Return Superseded without writing if the expected revision is not current.
     /// Repeating invalidation must never authorize or erase a newer credential.

@@ -872,15 +872,15 @@ fn receipt_is_atomic_and_thumbnail_failure_does_not_erase_original_success() {
     assert_eq!(client.stats().unwrap().complete, 1);
 }
 #[test]
-fn transfer_contract_rejects_unknown_fields_and_old_identity() {
+fn transfer_contract_rejects_unknown_fields_and_unsupported_identity() {
     assert!(
         serde_json::from_value::<TransferCommand>(json!({"op":"batches","unknown":true})).is_err()
     );
     let root = tempfile::tempdir().unwrap();
     let client = Client::open(root.path().join("client.sqlite"), config()).unwrap();
-    let mut old = request(json!({"op":"batches"}));
-    old.state_epoch = "ana-mobile-v0.3-r1".into();
-    assert!(client.transfer(old).is_err());
+    let mut unsupported = request(json!({"op":"batches"}));
+    unsupported.state_epoch = "fixture-state-epoch".into();
+    assert!(client.transfer(unsupported).is_err());
 }
 #[test]
 fn declared_multiresource_completeness_and_manual_override_are_precise() {

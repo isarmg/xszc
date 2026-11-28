@@ -74,7 +74,7 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
     var queuedRefresh by remember { mutableStateOf(false) }
     var queuedScan by remember { mutableStateOf(false) }
     val hasFilters = album != null || kind != null || unbacked
-    val needsPairing = connection.token.isBlank()
+    val needsLogin = connection.token.isBlank()
     val density = LocalDensity.current.density
     val thumbnailSize = (((LocalConfiguration.current.screenWidthDp - 32) * density / gridColumns / 64).roundToInt() * 64).coerceIn(64, 512)
     fun resetSelection() {
@@ -176,7 +176,7 @@ internal fun LocalGalleryScreen(context: Context, config: SecureConfig, profile:
         }
     }
     fun submitBackup() {
-        if (needsPairing) { onLogin(); return }
+        if (needsLogin) { onLogin(); return }
         if (selectionState.values.isEmpty()) { selectionState.active = true; return }
         val selectedRows = selectionState.values.values.toList()
         val generation = selectionState.generation

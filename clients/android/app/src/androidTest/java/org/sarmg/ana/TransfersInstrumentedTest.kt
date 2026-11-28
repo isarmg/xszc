@@ -26,7 +26,7 @@ import java.util.UUID
 class TransfersInstrumentedTest {
     @get:Rule val compose = createComposeRule()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
-    private val profile = instanceProfileKey("https://fixture.example.com", UUID.randomUUID().toString())
+    private val profile = deviceProfileKey("https://fixture.example.com", UUID.randomUUID().toString())
     private var media: Uri? = null
     private var source: File? = null
     private var session: TransferStore.Session? = null

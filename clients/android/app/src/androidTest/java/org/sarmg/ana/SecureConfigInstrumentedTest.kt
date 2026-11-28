@@ -61,7 +61,7 @@ class SecureConfigInstrumentedTest {
         val config = open()
         val firstAccount = UUID.randomUUID().toString()
         val firstDevice = UUID.randomUUID().toString()
-        val firstProfile = instanceProfileKey(address, firstDevice)
+        val firstProfile = deviceProfileKey(address, firstDevice)
 
         fun signIn(username: String, account: String, device: String, previousDevice: String?) {
             val expected = config.connection()
@@ -83,7 +83,7 @@ class SecureConfigInstrumentedTest {
             }.build()
             val api = BackupApi(address, "", client)
             val token = api.login(username, " exact password ", "Test device", previousDevice)
-            config.saveAuthenticatedConnection(expected, address, username, api, token, instanceProfileKey(address, device))
+            config.saveAuthenticatedConnection(expected, address, username, api, token, deviceProfileKey(address, device))
         }
 
         signIn("first", firstAccount, firstDevice, null)
@@ -100,7 +100,7 @@ class SecureConfigInstrumentedTest {
         config.logout()
         val signedOut = open().connection()
         assertEquals("", signedOut.token)
-        assertEquals(unpairedProfileKey(), signedOut.profile)
+        assertEquals(signedOutProfileKey(), signedOut.profile)
         signIn("FIRST", firstAccount, firstDevice, firstDevice)
         val firstSettings = open().settingsSnapshot()
         assertEquals(firstProfile, firstSettings.connection.profile)
@@ -160,13 +160,13 @@ class SecureConfigInstrumentedTest {
         }
     }
 
-    @Test fun firstUnpairedGalleryCatalogueDoesNotPreventInitialConfiguration() {
+    @Test fun signedOutGalleryCatalogueDoesNotPreventInitialConfiguration() {
         withIsolatedAppData { isolated, root ->
-            val database = File(root, "databases/${unpairedProfileKey()}/${MobileContractV1.DATABASE_FILENAME}")
+            val database = File(root, "databases/${signedOutProfileKey()}/${MobileContractV1.DATABASE_FILENAME}")
             database.parentFile!!.mkdirs()
-            database.writeText("unpaired-catalogue-test-fixture")
-            assertEquals(unpairedProfileKey(), SecureConfig(isolated).profile)
-            assertEquals("unpaired-catalogue-test-fixture", database.readText())
+            database.writeText("signed-out-catalogue-test-fixture")
+            assertEquals(signedOutProfileKey(), SecureConfig(isolated).profile)
+            assertEquals("signed-out-catalogue-test-fixture", database.readText())
         }
     }
 

@@ -48,8 +48,8 @@ class SecureConfig internal constructor(context: Context, name: String) {
     }
 
     private fun profile(values: ConfigValues): String =
-        if (values.string(MobileContractV1.TOKEN_KEY).isBlank()) unpairedProfileKey()
-        else values.string("queue_profile", unpairedProfileKey())
+        if (values.string(MobileContractV1.TOKEN_KEY).isBlank()) signedOutProfileKey()
+        else values.string("queue_profile", signedOutProfileKey())
 
     private fun connection(values: ConfigValues): Connection =
         Connection(values.string("server_url"), values.string("account_username_v1"), values.string(MobileContractV1.TOKEN_KEY),
@@ -115,7 +115,7 @@ class SecureConfig internal constructor(context: Context, name: String) {
 
     fun logout(expected: Connection? = null) = store.update {
         check(expected == null || connection(it) == expected) { "账户已改变，请重新操作" }
-        switchBackupSettings(it, unpairedProfileKey())
+        switchBackupSettings(it, signedOutProfileKey())
         it.remove(MobileContractV1.TOKEN_KEY)
         it.remove("queue_profile")
         it.remove("account_id")

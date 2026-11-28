@@ -4,7 +4,7 @@ object NativeBridgeV1 {
     init {
         System.loadLibrary("ana_mobile")
         check(abiRevision() == EXPECTED_ABI_REVISION) {
-            "ana native ABI mismatch"
+            "ana 原生模块的 ABI 版本不匹配"
         }
     }
 

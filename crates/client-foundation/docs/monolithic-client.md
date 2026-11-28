@@ -1,8 +1,8 @@
 # 单体客户端基础库
 
-xcsc 的 Rust 部分只有根目录一个包 `xcsc`、一个 `Cargo.toml` 和一个
-`Cargo.lock`。`src/lib.rs` 直接导出下表模块，不通过工作区包装独立子包，
-也没有内部路径依赖。Windows、macOS、Android 与 iOS 客户端从本仓库获取所需能力。
+xcsc 在 Ana 工作区内是一个包，使用自己的 `Cargo.toml` 和工作区根目录的
+`Cargo.lock`。`src/lib.rs` 直接导出下表模块。Windows、macOS、Android 与 iOS
+客户端可按需选用这些公共能力。
 
 | 模块 | 作用与边界 |
 |---|---|
@@ -23,7 +23,7 @@ xcsc 的 Rust 部分只有根目录一个包 `xcsc`、一个 `Cargo.toml` 和一
 `state_file` 使用中立文件名 `.state-instance.lock`、`.state-maintenance.lock`，
 分别提供独立的实例互斥与工具管理互斥，不读取维护 pending 标记或控制 Server 启动。
 `sqlite` 校验当前元数据及精确结构指纹。具体升级定义、恢复日志、服务停止
-策略与业务 SQL 由 xssc 拥有，操作前阅读该工具的实际升级说明。客户端自身日志用 `LogRecord::client` 和 `scope=client`；离线查询仍能读取
+策略与业务 SQL 由产品安装和维护工具负责。客户端自身日志用 `LogRecord::client` 和 `scope=client`；离线查询仍能读取
 既有 `scope=server` 记录并保持其身份。
 
 维护及实例 flock 在取得后立即由私有 RAII guard 持有，后续身份检查失败和
@@ -47,14 +47,14 @@ xcsc 的 Rust 部分只有根目录一个包 `xcsc`、一个 `Cargo.toml` 和一
 | `mobile-ffi` | `xcsc::mobile_ffi` | 只有导出 ABI 的库需要；必须使用 `panic=unwind`，abort-mode 明确编译失败 |
 | `jni` | `mobile-ffi` 和 JNI 适配 | 使用真实 Java 17 JVM 和移动运行时分别验收，不从 host 测试推导 Android 验收 |
 | `tracing` | `XcscStructuredLayer` | 客户端 tracing 事件产生客户端 scope；日志输出器失败仍可观察 |
-| `offline-maintenance` | Linux 的 `state_file`、SQLite 和所需原生 SQLite 依赖 | 正式维护目标为 Linux x86_64 GNU；非 Linux target 不编译这两个模块，也不引入 target-specific SQLite 依赖；xssi/xssc 使用此功能开关 |
+| `offline-maintenance` | Linux 的 `state_file`、SQLite 和所需原生 SQLite 依赖 | 正式维护目标为 Linux x86_64 GNU。其他平台跳过这两个模块及其专用 SQLite 依赖。 |
 
-产品固定 `package=xcsc`、精确 `=1.0.0` 和正式发布的完整官方 Git revision，
-通过 `xcsc::<module>` 导入。消费清单 `xcsc-client.toml` 使用 `desktop-client`、
-`mobile-client` 或 `offline-maintenance` 能力配置。根门禁拒绝子 Cargo 包、
-工作区外壳；消费门禁核对所有 manifest、别名、target、patch/replace
-与实际 Cargo.lock，要求唯一官方 xcsc 包、精确版本和完整 Git revision。
-职责由实际产品、能力配置和源码依赖核验，不按名称后缀推断。xczs、xsos、xscs、ana-server、xcos、xocs 等服务端不能消费本库。xssi/xssc 只能声明 Linux x86_64 GNU 的 `offline-maintenance` 能力配置，必须实际启用同名 feature，不能声明桌面或移动能力、移动 feature、HTTP/Web adapter 或客户端队列限制。通用测试夹具保持自己的标识。
+Ana 的清单固定本地 `xcsc` 包和精确 `=1.0.0` 版本，通过 `xcsc::<module>` 导入。
+消费清单 `xcsc-client.toml` 使用 `desktop-client`、`mobile-client` 或
+`offline-maintenance` 能力配置。消费检查核对 Cargo 清单、别名、target、
+patch/replace 与锁文件，要求唯一 xcsc 包、精确版本和本地来源。
+
+一致性策略限制 xczs、xsos、xscs、ana-server、xcos、xocs 等服务端使用客户端能力配置。已登记的离线维护工具只能声明 Linux x86_64 GNU 的 `offline-maintenance` 配置，并启用同名 feature。策略拒绝工具声明桌面或移动能力、移动 feature、HTTP/Web adapter 或客户端队列限制。
 
 ## 开发检查
 

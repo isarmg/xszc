@@ -269,7 +269,7 @@ class ClientPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "xcsc-client.toml").write_text(
-                VALID_MANIFEST.replace("fixture-product", "xscc").replace("0.5.0", "1.0.0") + component
+                VALID_MANIFEST.replace("fixture-product", "fixture-client-web").replace("0.5.0", "1.0.0") + component
             )
             source = root / "app.js"
             source.write_text("fetch('/state', {method: 'POST'});")

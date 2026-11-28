@@ -22,7 +22,7 @@ import java.util.UUID
 @RunWith(AndroidJUnit4::class)
 class DownloadRestoreInstrumentedTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
-    private val profile = instanceProfileKey("https://fixture.example.com", UUID.randomUUID().toString())
+    private val profile = deviceProfileKey("https://fixture.example.com", UUID.randomUUID().toString())
     private val filename = "restore-fixture-${UUID.randomUUID()}.png"
     private fun rows(includePending: Boolean = false): List<Uri> {
         val args = android.os.Bundle().apply {

@@ -61,7 +61,7 @@ internal class EncryptedConfigStore(
         val key = keys.existing()
         if (bytes == null) {
             check(key == null) { "本地凭据文件缺失，已有密钥被保留；请检查应用数据，不能自动重建身份" }
-            check(!file.hasBoundClientState()) { "本地凭据缺失，但已有实例备份记录；原任务已保留，不能自动重建身份" }
+            check(!file.hasBoundClientState()) { "本地凭据缺失，但已有账户备份记录；原任务已保留，不能自动重建身份" }
             return Loaded(ConfigValues(), null)
         }
         check(bytes.size in (HEADER.size + IV_SIZE + TAG_SIZE)..MAX_FILE_SIZE &&

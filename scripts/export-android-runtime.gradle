@@ -14,9 +14,9 @@ gradle.settingsEvaluated { settings ->
 }
 gradle.projectsEvaluated {
     def app = gradle.rootProject.project(':app')
-    app.tasks.register('exportXssiRuntimeInventory') {
+    app.tasks.register('exportAnaRuntimeInventory') {
         doLast {
-            def output = app.providers.gradleProperty('xssiRuntimeExport').get()
+            def output = app.providers.gradleProperty('anaRuntimeExport').get()
             def configuration = app.configurations.getByName('releaseRuntimeClasspath')
             def artifacts = [:].withDefault { [] }
             configuration.resolvedConfiguration.resolvedArtifacts.each { artifact ->

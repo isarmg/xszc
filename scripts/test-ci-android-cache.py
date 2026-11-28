@@ -55,7 +55,7 @@ class CompilationCacheTests(unittest.TestCase):
     def test_runtime_audit_and_full_emulator_suite_stay_uncached(self):
         audit = WORKFLOW.split('Verify actual Android release runtime sources before compiling', 1)[1]
         audit = audit.split('      - uses:', 1)[0]
-        self.assertIn(':app:exportXssiRuntimeInventory', audit)
+        self.assertIn(':app:exportAnaRuntimeInventory', audit)
         self.assertIn('scripts/check-android-runtime-inventory.py --export', audit)
         for source in [audit, EMULATOR]:
             self.assertNotIn('--build-cache', source)

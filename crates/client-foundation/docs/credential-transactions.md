@@ -1,6 +1,6 @@
 # 凭据事务
 
-`xcsc::runtime` 提供 `CredentialStore`、`CredentialSnapshot`、`CredentialAuthorization` 和 `CredentialMutation`。产品实现存储适配器，并负责修订身份、轮换日志、配对协议、端点绑定和崩溃恢复。
+`xcsc::runtime` 提供 `CredentialStore`、`CredentialSnapshot`、`CredentialAuthorization` 和 `CredentialMutation`。产品实现存储适配器，并负责修订身份、轮换日志、登录协议、端点绑定和崩溃恢复。
 
 接口采用同步调用。适配器在每次完整操作期间持有排他的存储锁，使同一状态的所有写入方串行执行。网络 I/O 必须放在事务外。
 

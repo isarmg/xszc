@@ -33,14 +33,14 @@ private class AndroidConfigFile(private val context: Context, private val name: 
         if (name != MobileContractV1.PREFERENCES_FILE) return false
         val databases = File(context.dataDir, "databases")
         if (!databases.exists()) return false
-        val profiles = checkNotNull(databases.listFiles()) { "无法检查已有实例备份记录" }
-        // An unpaired first gallery visit can create only this provisional catalogue.
-        val unpaired = unpairedProfileKey()
+        val profiles = checkNotNull(databases.listFiles()) { "无法检查已有账户备份记录" }
+        // Browsing before login can create this local gallery directory.
+        val signedOut = signedOutProfileKey()
         fun hasDatabase(directory: File): Boolean = listOf("", "-wal", "-shm").any { suffix ->
             File(directory, MobileContractV1.DATABASE_FILENAME + suffix).exists()
         }
         return hasDatabase(databases) || profiles.any {
-            it.name != unpaired && it.name.matches(Regex("[0-9a-f]{64}")) && hasDatabase(it)
+            it.name != signedOut && it.name.matches(Regex("[0-9a-f]{64}")) && hasDatabase(it)
         }
     }
     override fun read(): ByteArray? {

@@ -117,7 +117,7 @@ function generateNotices(metadataDocument, vendorPath, licensePath, rootName, bo
   }
   const actual = actualComponents(bom, packages, rootName, workspaceRoots[0].version);
   const provenance = JSON.parse(readFileSync(physicalRegular(physicalLicenseRoot,
-    join(physicalLicenseRoot, "xssi-cargo-source-checksums.json")), "utf8"));
+    join(physicalLicenseRoot, "ana-cargo-source-checksums.json")), "utf8"));
   if (provenance.format_version !== 1 || !Array.isArray(provenance.packages) || provenance.packages.length > 4096) {
     throw new Error("unsupported locked Cargo source checksum receipt");
   }
@@ -545,7 +545,7 @@ function physicalRegular(root, path) {
 }
 
 function recordedUpstreamLicenses(package_, sourceDirectory, physicalLicenseRoot) {
-  const root = join(physicalLicenseRoot, "xssi-upstream-licenses");
+  const root = join(physicalLicenseRoot, "ana-upstream-licenses");
   if (!existsPhysical(root)) return null;
   if (!lstatSync(root).isDirectory() || lstatSync(root).isSymbolicLink() || realpathSync(root) !== root) {
     throw new Error("upstream license receipt root is not physical");
@@ -630,7 +630,7 @@ function writeAtomically(path, value) {
   const resolved = resolve(path);
   const temporary = join(
     dirname(resolved),
-    `.xssi-third-party-${process.pid}.tmp`,
+    `.ana-third-party-${process.pid}.tmp`,
   );
   let descriptor;
   try {
@@ -743,7 +743,7 @@ function runSelfTest() {
         name:item.name,version:item.version,"bom-ref":item.id,
         licenses:[{expression:CURATED_LEGACY_LICENSE_EXPRESSIONS.get(item.license) || item.license}]}))});
     const noticesFor = (meta, bom=fixtureBom(meta)) => {
-      writeFileSync(join(licenses, "xssi-cargo-source-checksums.json"), JSON.stringify({
+      writeFileSync(join(licenses, "ana-cargo-source-checksums.json"), JSON.stringify({
         format_version:1,packages:meta.packages.filter(item => item.source !== null).map(item => ({
           id:item.id,name:item.name,version:item.version,source:item.source,checksum:"a".repeat(64)}))}));
       return generateNotices(meta,vendor,licenses,"xczs",bom);

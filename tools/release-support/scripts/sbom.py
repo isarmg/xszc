@@ -72,7 +72,7 @@ def _run(command,cwd,environment,maximum,timeout,destination=None):
         child=subprocess.Popen(command,cwd=cwd,env=environment,stdin=subprocess.DEVNULL,
                                stdout=subprocess.PIPE,bufsize=0,**options)
         if job is not None:job.assign_and_resume(child.pid)
-        reader=threading.Thread(target=read_output,name='xssi-dependency-output',daemon=True)
+        reader=threading.Thread(target=read_output,name='ana-dependency-output',daemon=True)
         reader.start()
         while True:
             remaining=deadline-time.monotonic()
@@ -143,7 +143,7 @@ def tools(environment):
 
 
 def vendor(source,environment):
-    directory=source/'xssi-vendor';directory.mkdir(mode=0o700)
+    directory=source/'ana-vendor';directory.mkdir(mode=0o700)
     command=['cargo','vendor','--locked','--versioned-dirs','--manifest-path',str(source/'Cargo.toml'),str(directory)]
     configuration=run(command,source,environment)
     if not configuration.strip():raise ValueError('Cargo vendor did not produce a source replacement')
@@ -164,13 +164,13 @@ def inventory(source,manifest,root_name,features,environment,stage,label,local_s
     tree=run(tree_command(manifest,root_name,target,features or (),default_features=default_features,
                           all_features=all_features),source,environment).decode('utf-8')
     selection=selection_from_tree(metadata,tree,root_name)
-    (source/'xssi-cargo-full-metadata.json').write_text(json.dumps(metadata),encoding='utf-8')
-    (source/'xssi-cargo-selection.json').write_text(json.dumps(selection),encoding='utf-8')
-    (source/'xssi-cargo-tree.txt').write_text(tree,encoding='utf-8')
+    (source/'ana-cargo-full-metadata.json').write_text(json.dumps(metadata),encoding='utf-8')
+    (source/'ana-cargo-selection.json').write_text(json.dumps(selection),encoding='utf-8')
+    (source/'ana-cargo-tree.txt').write_text(tree,encoding='utf-8')
     metadata=selected_metadata(metadata,selection)
-    run(['cargo','cyclonedx','--manifest-path',str(manifest),'--format','json','--spec-version','1.5','--override-filename','xssi-release.cdx','--all','--target',target,*options,'--quiet'],source,environment)
+    run(['cargo','cyclonedx','--manifest-path',str(manifest),'--format','json','--spec-version','1.5','--override-filename','ana-release.cdx','--all','--target',target,*options,'--quiet'],source,environment)
     if bounded(source/'Cargo.lock',8*1024*1024)!=lock:raise ValueError('SBOM tool changed the locked dependency graph')
-    raw=package.loads(bounded(manifest.parent/'xssi-release.cdx.json',8*1024*1024))
+    raw=package.loads(bounded(manifest.parent/'ana-release.cdx.json',8*1024*1024))
     revisions={}
     for item in metadata['packages']:
         if item['source'] is None:
@@ -181,7 +181,7 @@ def inventory(source,manifest,root_name,features,environment,stage,label,local_s
     bom=normalize(raw,metadata,root_name,revisions,[str(prefix) for prefix,_ in local_sources])
     destination=stage/'share'/f'{label}-sbom.cdx.json'
     destination.write_text(json.dumps(bom,sort_keys=True,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-    metadata_path=source/'xssi-cargo-metadata.json';metadata_path.write_text(json.dumps(metadata),encoding='utf-8')
+    metadata_path=source/'ana-cargo-metadata.json';metadata_path.write_text(json.dumps(metadata),encoding='utf-8')
     lock_packages=tomllib.loads(lock.decode('utf-8'))['package'];checksums=[]
     for item in metadata['packages']:
         if item['source'] is None:continue
@@ -190,11 +190,11 @@ def inventory(source,manifest,root_name,features,environment,stage,label,local_s
         if len(matches)!=1:raise ValueError('selected dependency has no unique immutable Cargo lock source')
         checksums.append({key:item[key] for key in ('id','name','version','source')}|
                          {'checksum':matches[0].get('checksum')})
-    (source/'xssi-cargo-source-checksums.json').write_text(json.dumps({'format_version':1,'packages':checksums}),encoding='utf-8')
+    (source/'ana-cargo-source-checksums.json').write_text(json.dumps({'format_version':1,'packages':checksums}),encoding='utf-8')
     from upstream_licenses import prepare
     prepare(source,metadata,set(selection['ids']),environment)
     notices=stage/'share'/f'THIRD_PARTY_{label.upper()}_LICENSES.txt'
-    run(['node',str(ROOT/'scripts/generate-third-party-notices.mjs'),str(metadata_path),str(source/'xssi-vendor'),str(source),str(notices),root_name,str(destination)],source,environment)
+    run(['node',str(ROOT/'scripts/generate-third-party-notices.mjs'),str(metadata_path),str(source/'ana-vendor'),str(source),str(notices),root_name,str(destination)],source,environment)
     if not bounded(notices,16*1024*1024).strip():raise ValueError('release dependency notices are empty')
     destination.chmod(0o644);notices.chmod(0o644)
     return destination
@@ -212,7 +212,7 @@ def produce_runtime_cargo_bom(source,manifest,root_name,stage,label,local_source
         raise ValueError('runtime inventory requires a private exported build workspace')
     environment=dict(os.environ if environment is None else environment)
     tools(environment)
-    if not (source/'xssi-vendor').is_dir():vendor(source,environment)
+    if not (source/'ana-vendor').is_dir():vendor(source,environment)
     environment['CARGO_NET_OFFLINE']='true'
     destination=inventory(source,Path(manifest),root_name,features,environment,Path(stage),
                           label,local_sources,target=target,default_features=default_features)

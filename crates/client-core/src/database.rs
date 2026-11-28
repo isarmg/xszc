@@ -164,7 +164,7 @@ fn snapshot_generation_once(path: &Path) -> anyhow::Result<ValidationSnapshot> {
         .parent()
         .context("client SQLite path must have a parent")?;
     let directory = tempfile::Builder::new()
-        .prefix("media-client-schema-check-")
+        .prefix("ana-client-schema-check-")
         .tempdir_in(parent)
         .context("create private client current-schema validation directory")?;
     let database = directory.path().join("database.sqlite3");

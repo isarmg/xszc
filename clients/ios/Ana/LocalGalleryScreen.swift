@@ -304,7 +304,7 @@ struct LocalGalleryScreen: View {
     @State private var queuedRefresh = false
     @State private var queuedScan = false
     private var hasFilters: Bool { album != nil || kind != nil || unbacked }
-    private var needsPairing: Bool { !coordinator.isLoggedIn }
+    private var needsLogin: Bool { !coordinator.isLoggedIn }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -471,7 +471,7 @@ struct LocalGalleryScreen: View {
         withTransaction(transaction) { preview = row }
     }
     private func submitBackup() {
-        if needsPairing { onLogin(); return }
+        if needsLogin { onLogin(); return }
         if selection.values.isEmpty { selection.active = true; return }
         let descriptors = selection.values.values.map(\.descriptor)
         resetSelection(); onSubmitted()

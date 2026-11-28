@@ -172,8 +172,8 @@ final class NavigationTests: XCTestCase {
         app.launchArguments += ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN", "-gallery_grid_columns", "3"]
         app.launch()
         defer { app.terminate() }
-        let pairing = app.buttons["gallery.backup"]
-        XCTAssertTrue(pairing.waitForExistence(timeout: 15))
+        let loginButton = app.buttons["gallery.backup"]
+        XCTAssertTrue(loginButton.waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["account.open"].exists)
         requestPhotoAccess(app)
         screenshot("local-gallery-loading")
@@ -207,7 +207,7 @@ final class NavigationTests: XCTestCase {
         XCTAssertLessThan(selection.frame.midY, tile.frame.midY)
         selection.tap()
         XCTAssertTrue(app.staticTexts["已选 1 项"].waitForExistence(timeout: 5))
-        XCTAssertTrue(pairing.isHittable)
+        XCTAssertTrue(loginButton.isHittable)
         screenshot("local-gallery-selected")
         selection.tap()
         XCTAssertTrue(app.staticTexts["已选 0 项"].waitForExistence(timeout: 5))
@@ -218,7 +218,7 @@ final class NavigationTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["已选 \(loadedCount) 项"].waitForExistence(timeout: 30), app.debugDescription)
         app.buttons["gallery.cancel-selection"].tap()
         screenshot("local-gallery")
-        pairing.tap()
+        loginButton.tap()
         assertGlassLogin(app)
         XCTAssertFalse(app.buttons["account.submit"].isEnabled)
         let password = app.secureTextFields["account.password"]

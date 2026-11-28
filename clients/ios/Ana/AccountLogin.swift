@@ -49,7 +49,7 @@ struct AccountDevice: Codable {
     let accountId: UUID
     let deviceId: UUID
 
-    var profile: String { instanceProfileKey(server: server, deviceId: deviceId) }
+    var profile: String { deviceProfileKey(server: server, deviceId: deviceId) }
 
     func matches(server: URL, username: String) -> Bool {
         guard let saved = URL(string: self.server) else { return false }
@@ -70,7 +70,7 @@ struct AccountState: Codable {
     var lastServer = ""
     var lastUsername = ""
 
-    var profile: String { active?.device.profile ?? unpairedProfileKey() }
+    var profile: String { active?.device.profile ?? signedOutProfileKey() }
 
     func rememberedDevice(for credentials: AccountLogin) -> AccountDevice? {
         devices.first { $0.matches(server: credentials.server, username: credentials.username) }

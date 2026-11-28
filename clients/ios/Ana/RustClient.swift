@@ -9,16 +9,16 @@ private func nativeCall(_ operation: (UnsafeMutablePointer<XcscFfiResultV1>) -> 
     var result = XcscFfiResultV1()
     let status = operation(&result)
     guard result.abi_revision == UInt32(XCSC_FFI_ABI_REVISION) else {
-        throw ClientFailure.message("ana native result ABI mismatch")
+        throw ClientFailure.message("ana 原生模块返回的 ABI 版本不匹配")
     }
     defer { _ = xcsc_ffi_result_free_v1(&result) }
     guard status == result.status, result.bytes.length <= Int(XCSC_FFI_MAX_OUTPUT_BYTES),
           result.bytes.data != nil || result.bytes.length == 0 else {
-        throw ClientFailure.message("ana native result is invalid")
+        throw ClientFailure.message("ana 原生模块返回的结果无效")
     }
     let data = result.bytes.data.map { Data(bytes: $0, count: result.bytes.length) } ?? Data()
     guard status == Int32(XCSC_FFI_OK) else {
-        throw ClientFailure.message(String(data: data, encoding: .utf8) ?? "Native operation failed")
+        throw ClientFailure.message(String(data: data, encoding: .utf8) ?? "ana 原生模块操作失败")
     }
     return (result.value, data)
 }
@@ -130,7 +130,7 @@ final class RustClient: @unchecked Sendable {
                 }
             }
         }
-        guard result.value <= 1 else { throw ClientFailure.message("Native file verification returned an invalid boolean") }
+        guard result.value <= 1 else { throw ClientFailure.message("ana 原生模块返回的文件校验结果无效") }
         return result.value == 1
     }
 
@@ -148,7 +148,7 @@ final class RustClient: @unchecked Sendable {
 
     init(databasePath: String) throws {
         guard ana_ffi_abi_revision() == UInt32(XCSC_FFI_ABI_REVISION) else {
-            throw ClientFailure.message("ana native ABI mismatch")
+            throw ClientFailure.message("ana 原生模块的 ABI 版本不匹配")
         }
         let config: [String: Any] = [
             "product": MobileContractV1.product,
@@ -165,7 +165,7 @@ final class RustClient: @unchecked Sendable {
                 }
             }
         }
-        guard opened.value != 0 else { throw ClientFailure.message("Native open returned an invalid handle") }
+        guard opened.value != 0 else { throw ClientFailure.message("ana 原生模块返回的数据库句柄无效") }
         handle = opened.value
     }
 
@@ -179,7 +179,7 @@ final class RustClient: @unchecked Sendable {
                 }
             }
         }
-        guard result.value <= 1 else { throw ClientFailure.message("Native needs returned an invalid boolean") }
+        guard result.value <= 1 else { throw ClientFailure.message("ana 原生模块返回的备份需求状态无效") }
         return result.value == 1
     }
 
@@ -247,13 +247,13 @@ final class RustClient: @unchecked Sendable {
         let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let expectedKeys = Set(["product", "application_version", "revision", "state_epoch", "ok", "value", "error"])
         guard raw.map({ Set($0.keys) }) == expectedKeys else {
-            throw ClientFailure.message("Rust Client returned an invalid current envelope")
+            throw ClientFailure.message("ana 原生模块返回的响应字段与当前接口不匹配")
         }
         let envelope = try decoder.decode(Envelope<T>.self, from: data)
         try MobileContractV1.requireIdentity(product: envelope.product, applicationVersion: envelope.applicationVersion,
                                              revision: envelope.revision, stateEpoch: envelope.stateEpoch)
         guard envelope.ok && envelope.error == nil else {
-            throw ClientFailure.message("Rust Client returned an invalid success envelope")
+            throw ClientFailure.message("ana 原生模块返回的成功响应无效")
         }
         return envelope.value
     }

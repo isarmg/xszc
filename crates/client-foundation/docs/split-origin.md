@@ -1,11 +1,7 @@
 # 仓库与发布来源
 
-xcsc 是独立构建、测试和发布的客户端基础仓库。
-源码包版本来自根 `Cargo.toml` 的 `package.version`；发布流程核对
-Git tag、当前提交与干净工作树，并从该提交生成带校验和的源码归档。
+Ana 导入的 xcsc 源码提交见[客户端基础库来源](../ORIGIN.md)。导入前，
+xcsc 仓库独立构建和发布，并核对 Git 标签与提交后生成带校验和的源码归档。
 
-消费者同时固定精确 crate 版本和完整 Git revision。发布记录位于 `docs/releases/`，
-当前 API、能力配置与边界以本仓库源码和现行文档为准。
-
-xcsc 独立维护通用客户端安全机制，修复需在本仓库验证并发布；
-产品接入和业务验收由各自仓库负责。
+历史 XCSC 发布记录位于 `docs/releases/`。Ana 当前从 `crates/client-foundation`
+编译 xcsc，版本和依赖解析由 Ana 工作区管理。改动在 Ana 仓库内验证并随客户端发布。

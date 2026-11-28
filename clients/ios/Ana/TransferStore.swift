@@ -1,11 +1,12 @@
 import Foundation
 import CryptoKit
 
-func unpairedProfileKey() -> String {
-    SHA256.hash(data: Data("ana-unpaired-v1".utf8)).map { String(format: "%02x", $0) }.joined()
+// Keep the existing local gallery directory used before login.
+func signedOutProfileKey() -> String {
+    "b3aba28d35866a66799b23731f20096d5837e799b6b8933a433e3d7b34c7b524"
 }
 
-func instanceProfileKey(server: String, deviceId: UUID) -> String {
+func deviceProfileKey(server: String, deviceId: UUID) -> String {
     let normalized = server.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     return SHA256.hash(data: Data("ana-instance-v1\n\(normalized)\n\(deviceId.uuidString.lowercased())".utf8))
         .map { String(format: "%02x", $0) }.joined()
@@ -24,7 +25,7 @@ struct TransferBatch: Identifiable {
 final class TransferStore: @unchecked Sendable {
     static func bindAccount(server: String, accountId: UUID, deviceId: UUID,
                             open: (String) throws -> TransferStore = { try TransferStore(profile: $0) }) throws -> (profile: String, store: TransferStore) {
-        let profile = instanceProfileKey(server: server, deviceId: deviceId)
+        let profile = deviceProfileKey(server: server, deviceId: deviceId)
         let target = try open(profile)
         let binding: [String: Any]?
         do { binding = try target.client.transfer(["op": "binding"]) as? [String: Any] }
@@ -32,7 +33,7 @@ final class TransferStore: @unchecked Sendable {
         let matches = binding == nil || ((binding?["server"] as? String) == server &&
             (binding?["account_id"] as? String).flatMap(UUID.init(uuidString:)) == accountId &&
             (binding?["device_id"] as? String).flatMap(UUID.init(uuidString:)) == deviceId)
-        guard matches else { throw ClientFailure.message("服务器实例身份已改变；旧备份队列已保留") }
+        guard matches else { throw ClientFailure.message("服务器、账户或设备与本地备份记录不符。原备份队列已保留") }
         do {
             try target.client.transfer(["op": "bind", "server": server,
                 "account_id": accountId.uuidString, "device_id": deviceId.uuidString])

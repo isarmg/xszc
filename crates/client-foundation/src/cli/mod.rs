@@ -43,7 +43,7 @@ pub type Result<T> = std::result::Result<T, Failure>;
 /// Product-owned descriptions for product error codes.
 ///
 /// xcsc owns the output envelope and descriptions for errors raised by
-/// its CLI, terminal and service primitives. Pairing protocols, remote API
+/// its CLI, terminal and service primitives. Authentication protocols, remote API
 /// semantics and recovery instructions remain in the product that defines
 /// those contracts.
 pub trait ProductErrorCatalog {
@@ -1075,7 +1075,7 @@ mod concise_error_tests {
                 }
             }
         }
-        let result = prompt_secret("Authorization code", max_bytes, Instant::now() + timeout);
+        let result = prompt_secret("Password", max_bytes, Instant::now() + timeout);
         match result {
             Ok(value) => println!("RESULT:{}", value.len()),
             Err(error) => println!(
@@ -1096,7 +1096,7 @@ mod concise_error_tests {
 
     #[test]
     fn product_options_keep_product_owned_value_validation() {
-        for name in ["--file", "--bootstrap"] {
+        for name in ["--file", "--credential-source"] {
             let args =
                 Args::parse(vec![name.into(), "product-value".into()], &[name], &[]).unwrap();
             assert_eq!(args.get(name), Some("product-value"));
@@ -1155,7 +1155,7 @@ mod concise_error_tests {
             "accessToken": "token-value",
             "ApiKey": {"value": "nested-key"},
             "api-key": "hyphenated-key",
-            "pairingToken": 123456,
+            "loginToken": 123456,
             "password": null,
             "passwordConfigured": false,
             "passwordStatus": {"configured": false},
@@ -1179,7 +1179,7 @@ mod concise_error_tests {
         assert_eq!(result["accessToken"], json!({"configured": true}));
         assert_eq!(result["ApiKey"], json!({"configured": true}));
         assert_eq!(result["api-key"], json!({"configured": true}));
-        assert_eq!(result["pairingToken"], json!({"configured": true}));
+        assert_eq!(result["loginToken"], json!({"configured": true}));
         assert_eq!(result["password"], json!({"configured": false}));
         assert_eq!(result["passwordConfigured"], false);
         assert_eq!(result["passwordStatus"], json!({"configured": false}));
@@ -1301,7 +1301,7 @@ mod concise_error_tests {
         assert!(rendered.contains("Repair the example binding"));
 
         assert_eq!(
-            xcsc_failure_message("pairing_endpoint_not_found"),
+            xcsc_failure_message("login_endpoint_not_found"),
             "The operation failed; error.code identifies the exact machine-readable reason."
         );
     }

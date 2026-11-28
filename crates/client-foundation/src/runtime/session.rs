@@ -5,9 +5,9 @@ use crate::runtime::{Error, SingleInstanceLock};
 use std::path::Path;
 
 /// Owns the private state directory and its single delivery-instance lock.
-/// Acquire before bootstrap/collection, retain through delivery shutdown, and
-/// use the anchored directory for child resources. Pairing and read-only
-/// diagnostics must not acquire this delivery lock.
+/// Acquire before starting delivery or collection and hold through shutdown.
+/// Use the anchored directory for child resources. Credential transactions and
+/// read-only diagnostics must not acquire this delivery lock.
 pub struct ClientSession {
     directory: PrivateDirectory,
     _lock: SingleInstanceLock,

@@ -23,7 +23,7 @@ enum MobileContractV1 {
               applicationVersion == self.applicationVersion,
               revision == self.revision,
               stateEpoch == self.stateEpoch else {
-            throw ClientFailure.message("Rust Client 返回了非当前 revision 1 合约")
+            throw ClientFailure.message("ana 原生模块返回的应用或接口标识不匹配")
         }
     }
 }

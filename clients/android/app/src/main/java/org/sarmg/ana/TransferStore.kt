@@ -5,14 +5,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 
-internal fun unpairedProfileKey(): String = MessageDigest.getInstance("SHA-256")
-    .digest("ana-unpaired-v1".toByteArray()).joinToString("") { "%02x".format(it) }
+// Keep the existing local gallery directory used before login.
+internal fun signedOutProfileKey(): String =
+    "b3aba28d35866a66799b23731f20096d5837e799b6b8933a433e3d7b34c7b524"
 
-internal fun instanceProfileKey(server: String, deviceId: String): String = MessageDigest.getInstance("SHA-256")
+internal fun deviceProfileKey(server: String, deviceId: String): String = MessageDigest.getInstance("SHA-256")
     .digest("ana-instance-v1\n${server.trim().trimEnd('/')}\n${java.util.UUID.fromString(deviceId)}".toByteArray())
     .joinToString("") { "%02x".format(it) }
 
-/** One native handle per account in this process; reopening must not reset a live upload. */
+/** One native handle per profile in this process. Reopening must not reset a live upload. */
 internal object TransferStore {
     data class Session(val handle: Long, val paths: NativeStorage.Paths, val profile: String)
     private val sessions = mutableMapOf<String, Session>()
@@ -28,13 +29,13 @@ internal object TransferStore {
 
     /** A refreshed device session reopens its queue; confirm both the account and device. */
     fun bindAccount(context: Context, server: String, accountId: String, deviceId: String): Session {
-        val target = open(context, instanceProfileKey(server, deviceId))
+        val target = open(context, deviceProfileKey(server, deviceId))
         val binding = try { command(target.handle, "binding") as? JSONObject }
         catch (error: Exception) { throw IllegalStateException("读取本地账户绑定失败：${error.message}", error) }
         check(binding == null || (binding.getString("server") == server &&
             java.util.UUID.fromString(binding.getString("account_id")) == java.util.UUID.fromString(accountId) &&
             java.util.UUID.fromString(binding.getString("device_id")) == java.util.UUID.fromString(deviceId))) {
-            "服务器实例身份已改变；旧备份队列已保留"
+            "服务器、账户或设备与本地备份记录不符。原备份队列已保留"
         }
         try { command(target.handle, "bind", JSONObject().put("server", server)
             .put("account_id", accountId).put("device_id", deviceId)) }

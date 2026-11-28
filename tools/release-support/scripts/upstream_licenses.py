@@ -144,7 +144,7 @@ def prepare(source_root, metadata, selected_ids, environment):
     license substitutes for a dependency's actual upstream copyright or grant.
     """
     source_root = _directory(source_root)
-    vendor = _directory(source_root / 'xssi-vendor')
+    vendor = _directory(source_root / 'ana-vendor')
     if not isinstance(selected_ids, set) or not all(isinstance(item, str) for item in selected_ids) or len(selected_ids) > 4096:
         raise ValueError('invalid selected runtime package identifiers')
     if not isinstance(metadata.get('packages'), list):
@@ -156,7 +156,7 @@ def prepare(source_root, metadata, selected_ids, environment):
     registry = {(item['name'], item['version']): item for item in definitions['registry']}
     if len(registry) != len(definitions['registry']):
         raise ValueError('reviewed upstream package definitions repeat an identity')
-    output = source_root / 'xssi-upstream-licenses'
+    output = source_root / 'ana-upstream-licenses'
     if output.exists() or output.is_symlink():
         raise ValueError('upstream license receipt output already exists')
     pending = []

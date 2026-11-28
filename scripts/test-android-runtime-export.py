@@ -78,7 +78,7 @@ class AndroidRuntimeExportTests(unittest.TestCase):
         result = subprocess.run(
             [gradle, "--no-daemon", "--offline", "-p", str(cls.root), "-I",
              str(ROOT / "scripts" / "export-android-runtime.gradle"),
-             "-PxssiRuntimeExport=" + str(cls.root / "export.json"), ":app:exportXssiRuntimeInventory"],
+             "-PanaRuntimeExport=" + str(cls.root / "export.json"), ":app:exportAnaRuntimeInventory"],
             env=cls.environment, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=180)
         if result.returncode:
             raise RuntimeError("Real Gradle resolution failed:\n" + result.stdout + result.stderr)

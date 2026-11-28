@@ -26,7 +26,7 @@ def record(source,stage,label,target=None,*,files=None,inventory_relative="share
         sbom.fields(item,["path","sha256","archive_entry"])
         sbom.relative(item["path"]);sbom.sha(item["sha256"])
         if item["archive_entry"] is not None:sbom.relative(item["archive_entry"])
-    metadata=package.loads(bounded(source/'xssi-cargo-metadata.json',32*1024*1024))
+    metadata=package.loads(bounded(source/'ana-cargo-metadata.json',32*1024*1024))
     selected=[item for item in metadata['packages'] if item['name']=='libsqlite3-sys']
     if len(selected)!=1:raise ValueError('bundled SQLite must resolve to exactly one source')
     selected=selected[0]
@@ -38,7 +38,7 @@ def record(source,stage,label,target=None,*,files=None,inventory_relative="share
     if len(packages)!=1 or not re.fullmatch('[0-9a-f]{64}',packages[0].get('checksum','')):
         raise ValueError('SQLite wrapper archive is not checksum-bound')
     origin=Path(selected['manifest_path']).parent
-    if not origin.is_relative_to(source/'xssi-vendor'):
+    if not origin.is_relative_to(source/'ana-vendor'):
         raise ValueError('SQLite receipt requires the actual private vendored build source')
     checksums=package.loads(bounded(origin/'.cargo-checksum.json',1024*1024))
     if checksums['package']!=packages[0]['checksum']:

@@ -37,27 +37,27 @@ object MobileContractV1 {
         val keys = mutableSetOf<String>()
         val iterator = envelope.keys()
         while (iterator.hasNext()) keys += iterator.next()
-        require(keys == allowed) { "Rust Client returned an unknown current envelope shape" }
-        require(envelope.getString("product") == PRODUCT) { "Rust Client product mismatch" }
+        require(keys == allowed) { "ana 原生模块返回的响应字段与当前接口不匹配" }
+        require(envelope.getString("product") == PRODUCT) { "ana 原生模块的产品标识不匹配" }
         require(envelope.getString("application_version") == APPLICATION_VERSION) {
-            "Rust Client application version mismatch"
+            "ana 原生模块的应用版本不匹配"
         }
-        require(envelope.getInt("revision") == REVISION) { "Rust Client revision mismatch" }
-        require(envelope.getString("state_epoch") == STATE_EPOCH) { "Rust Client state epoch mismatch" }
+        require(envelope.getInt("revision") == REVISION) { "ana 原生模块的接口修订号不匹配" }
+        require(envelope.getString("state_epoch") == STATE_EPOCH) { "ana 原生模块的状态版本不匹配" }
         if (!envelope.getBoolean("ok")) {
-            error(envelope.optString("error", "Rust Client operation failed"))
+            error(envelope.optString("error", "ana 原生模块操作失败"))
         }
         return envelope
     }
 
     fun requireIdentity(value: JSONObject) {
         // Runtime metadata supplied by the server-owned protocol via Rust FFI.
-        require(value.getString("upload_operation_header").isNotBlank()) { "Rust Client upload HTTP contract missing" }
-        require(value.getString("product") == PRODUCT) { "Rust Client job product mismatch" }
+        require(value.getString("upload_operation_header").isNotBlank()) { "ana 原生模块未提供上传请求头" }
+        require(value.getString("product") == PRODUCT) { "ana 任务的产品标识不匹配" }
         require(value.getString("application_version") == APPLICATION_VERSION) {
-            "Rust Client job application version mismatch"
+            "ana 任务的应用版本不匹配"
         }
-        require(value.getInt("revision") == REVISION) { "Rust Client job revision mismatch" }
-        require(value.getString("state_epoch") == STATE_EPOCH) { "Rust Client job state epoch mismatch" }
+        require(value.getInt("revision") == REVISION) { "ana 任务的接口修订号不匹配" }
+        require(value.getString("state_epoch") == STATE_EPOCH) { "ana 任务的状态版本不匹配" }
     }
 }

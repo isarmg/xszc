@@ -4,7 +4,7 @@
 
 | 现象 | 检查和处理 |
 |---|---|
-| 消费检查报告依赖来源不同 | 检查产品所有 Cargo 清单、工作区继承、patch/replace 和 `Cargo.lock`，统一精确版本与完整官方 Git revision |
+| 消费检查报告依赖来源不同 | 检查 Cargo 清单、工作区继承、patch/replace 和 `Cargo.lock`，确认 `xcsc` 指向 `crates/client-foundation` 且版本精确匹配 |
 | 能力或预算字段缺失 | 对照所选 profile；`bounded-spool` 同时填写三个 `client_limits` 值 |
 | 私有目录打开失败 | 确认绝对物理路径、现有父目录、实际运行身份和权限；Windows 同时核对服务 SID 与 ACL |
 | `AlreadyRunning` | 找到正在使用同一状态目录的实例，正常关闭后再启动；保留稳定锁文件 |

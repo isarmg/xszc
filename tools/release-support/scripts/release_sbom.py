@@ -372,7 +372,7 @@ def archived_import_requirements(stage, path, covered, checksum):
                 relative(item.filename)
                 if (path, item.filename) not in covered or item.file_size > MAX_BYTES:
                     raise ValueError('embedded native binary is not bound to its actual runtime graph or component')
-                with tempfile.TemporaryDirectory(prefix='xssi-native-inventory-') as temporary:
+                with tempfile.TemporaryDirectory(prefix='ana-native-inventory-') as temporary:
                     binary = Path(temporary) / 'binary'
                     total = len(magic)
                     with binary.open('wb') as output:
@@ -502,7 +502,7 @@ def finalize(stage, dependency_boms, receipt, product, version, revision, target
     inventory = files(stage, package_symlinks, output_relative)
     native_boms,native_bindings,native_evidence=native_graphs(stage,native_packages,inventory,product,version,revision,target)
     # Temporary normalized graphs never become extra shipped payload files.
-    with tempfile.TemporaryDirectory(prefix='xssi-native-runtime-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='ana-native-runtime-') as temporary:
         private_root=Path(temporary).resolve(strict=True)
         graph_paths=[]
         for index,bom in enumerate(native_boms):

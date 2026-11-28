@@ -4,7 +4,7 @@
 
 ## 1. 添加依赖
 
-将[根 README 的固定依赖](../README.md#快速部署)加入产品的 `Cargo.toml`。在产品根目录运行 `cargo check` 生成或更新 `Cargo.lock`，并提交锁文件。精确版本与完整 Git revision 共同确定构建输入。
+Ana 的根 `Cargo.toml` 在 `[workspace.dependencies]` 中声明本地 `xcsc` 路径和精确版本。使用该库的工作区包通过 `xcsc.workspace = true` 继承依赖，所需功能由该包显式声明。工作区根目录的 `Cargo.lock` 记录解析结果。
 
 普通桌面接入使用默认 features。导出移动 C ABI 时选择 `mobile-ffi`；Android JNI 选择 `jni`；Linux 离线维护选择 `offline-maintenance`。目标列表见[能力配置](configuration.md)。
 
@@ -52,10 +52,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 4. 检查产品接入
 
-在 xcsc 源码根目录执行，将路径换为产品仓库的绝对路径：
+在 Ana 仓库根目录执行本地来源和能力检查。
 
 ```sh
-python3 scripts/check-xcsc.py --product-root /absolute/path/to/product
+python3 scripts/check-xcsc-source.py
 ```
 
 检查覆盖依赖来源、能力声明和源码使用情况。成功后运行产品自己的测试与构建，再按产品的安装流程交付。检查未通过时，按[排查问题](troubleshooting.md)定位具体字段或调用。

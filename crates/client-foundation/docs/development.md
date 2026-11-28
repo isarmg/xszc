@@ -1,17 +1,15 @@
 # 构建与测试
 
-准备 Rust `1.99.0`、Python 3 和目标操作系统的原生 C/C++ 编译工具链。在仓库根目录运行：
+准备 Rust `1.99.0`、Python 3 和目标操作系统的原生 C/C++ 编译工具链。在 Ana 仓库根目录运行以下检查和构建命令。
 
 ```sh
-python3 scripts/check-xcsc.py
-python3 -m unittest discover -s tools/tests -v
+python3 scripts/check-xcsc-source.py
 cargo fmt --all -- --check
-cargo test --locked -p xcsc --all-targets --all-features
 cargo clippy --locked -p xcsc --all-targets --all-features -- -D warnings
-cargo doc --locked --all-features --no-deps
+cargo doc --locked -p xcsc --all-features --no-deps
 ```
 
-Python 检查产品来源、能力和绑定生成；Rust 测试覆盖当前主机上的公共机制；API 文档写入 `target/doc/xcsc/`。Linux 的 `--all-features` 包含离线 SQLite，其他平台保持各自模块边界。
+Python 检查产品来源和能力。GitHub Actions 执行工作区测试和平台验证。API 文档写入 `target/doc/xcsc/`。Linux 的 `--all-features` 包含离线 SQLite，其他平台保持各自模块边界。
 
 ## 选择专项验证
 
@@ -34,4 +32,4 @@ Python 检查产品来源、能力和绑定生成；Rust 测试覆盖当前主�
 
 ## 发布和产品更新
 
-更新公共 API 时，同步调整对应文档、能力清单及受影响的测试。产品依赖升级时更新精确版本、完整 revision 和锁文件，再执行消费检查与产品测试。源码归档和标签验证见[发布来源](split-origin.md)；原生调用审查见[参考索引](reference/README.md)。
+更新公共 API 时，同步调整对应文档、能力清单及受影响的测试。依赖升级后核对工作区锁文件并通过消费检查和产品测试。导入记录见[发布来源](split-origin.md)，原生调用审查见[参考索引](reference/README.md)。
