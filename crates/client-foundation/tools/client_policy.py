@@ -149,7 +149,7 @@ def load_profiles(foundation_root: Path) -> tuple[dict[str, dict[str, Any]], set
 
 
 def load_product_manifest(product_root: Path) -> dict[str, Any]:
-    return _toml(product_root / "xcsc-client.toml")
+    return _toml(product_root / "ana-client.toml")
 
 
 def verify_client_lock(path: Path, version: str, revision: str | None = None, *, local: bool = False) -> int:

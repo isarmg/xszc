@@ -95,7 +95,7 @@ class ReleaseCITests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('delivery_manifest', path)
         manifest = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(manifest)
-        product = tomllib.loads((ROOT / 'xcsc-client.toml').read_text())['product_id']
+        product = tomllib.loads((ROOT / 'ana-client.toml').read_text())['product_id']
         version = tomllib.loads((ROOT / 'Cargo.toml').read_text())['workspace']['package']['version']
         self.assertEqual(manifest.identity(product, version, SHA, 'aarch64-apple-ios')['product'], product)
 

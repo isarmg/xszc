@@ -50,7 +50,7 @@ xcsc 在 Ana 工作区内是一个包，使用自己的 `Cargo.toml` 和工作�
 | `offline-maintenance` | Linux 的 `state_file`、SQLite 和所需原生 SQLite 依赖 | 正式维护目标为 Linux x86_64 GNU。其他平台跳过这两个模块及其专用 SQLite 依赖。 |
 
 Ana 的清单固定本地 `xcsc` 包和精确 `=1.0.0` 版本，通过 `xcsc::<module>` 导入。
-消费清单 `xcsc-client.toml` 使用 `desktop-client`、`mobile-client` 或
+消费清单 `ana-client.toml` 使用 `desktop-client`、`mobile-client` 或
 `offline-maintenance` 能力配置。消费检查核对 Cargo 清单、别名、target、
 patch/replace 与锁文件，要求唯一 xcsc 包、精确版本和本地来源。
 

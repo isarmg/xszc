@@ -18,7 +18,7 @@ def main():
     spec=importlib.util.spec_from_file_location('client_release_inventory',ROOT/'scripts/release-inventory.py')
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     environment=module.clean_environment()
-    profile=tomllib.loads((ROOT/'xcsc-client.toml').read_text())
+    profile=tomllib.loads((ROOT/'ana-client.toml').read_text())
     manifest=tomllib.loads((ROOT/'Cargo.toml').read_text())
     version=manifest.get('package',{}).get('version')
     if version is None or version=={'workspace':True}:

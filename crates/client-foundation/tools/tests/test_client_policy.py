@@ -35,7 +35,7 @@ class ClientPolicyTests(unittest.TestCase):
         component = '\n[[components]]\nid="mobile"\nprofile="mobile-client"\ncapabilities=["mobile-queue", "mobile-state", "mobile-ffi", "https-delivery"]\n'
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            (product / "xcsc-client.toml").write_text(VALID_MANIFEST + component)
+            (product / "ana-client.toml").write_text(VALID_MANIFEST + component)
             (product / "Cargo.toml").write_text('[package]\nname="business"\nversion="1.0.0"\n')
             (product / "src").mkdir()
             (product / "src/lib.rs").write_text(
@@ -48,7 +48,7 @@ class ClientPolicyTests(unittest.TestCase):
         component = '\n[[components]]\nid="mobile"\nprofile="mobile-client"\ncapabilities=["mobile-queue", "mobile-state", "mobile-ffi", "https-delivery"]\n'
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            (product / "xcsc-client.toml").write_text(
+            (product / "ana-client.toml").write_text(
                 VALID_MANIFEST.replace('source_roots = ["."]', 'source_roots = ["src/helpers"]') + component
             )
             (product / "src/helpers").mkdir(parents=True)
@@ -72,7 +72,7 @@ class ClientPolicyTests(unittest.TestCase):
         component = '\n[[components]]\nid="mobile"\nprofile="mobile-client"\ncapabilities=["mobile-queue", "mobile-state", "mobile-ffi", "https-delivery"]\n'
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            (product / "xcsc-client.toml").write_text(VALID_MANIFEST + component)
+            (product / "ana-client.toml").write_text(VALID_MANIFEST + component)
             (product / "Cargo.toml").write_text('[package]\nname="business"\nversion="1.0.0"\n')
             source = product / "lib.rs"
             for declaration in ['struct HandleRegistry {}', 'fn read_c_string() {}', 'fn checked_c_string() {}', 'fn guard_value() {}', 'static LAST_ERROR: () = ();']:
@@ -85,7 +85,7 @@ class ClientPolicyTests(unittest.TestCase):
         component = '\n[[components]]\nid="mobile"\nprofile="mobile-client"\ncapabilities=["mobile-queue", "mobile-state", "mobile-ffi", "https-delivery"]\n'
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            (product / "xcsc-client.toml").write_text(VALID_MANIFEST + component)
+            (product / "ana-client.toml").write_text(VALID_MANIFEST + component)
             cargo = product / "Cargo.toml"
             valid = 'xcsc={git="https://github.com/isarmg/xcsc.git",rev="' + 'a' * 40 + '",version="=0.5.0"}'
             cargo.write_text('[dependencies]\n' + valid)
@@ -109,7 +109,7 @@ class ClientPolicyTests(unittest.TestCase):
         component = '\n[[components]]\nid="offline"\nprofile="offline-maintenance"\ncapabilities=["private-state", "explicit-paths", "restore-journal", "linux-openat2", "offline-sqlite-maintenance"]\n'
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            (product / "xcsc-client.toml").write_text(VALID_MANIFEST + component)
+            (product / "ana-client.toml").write_text(VALID_MANIFEST + component)
             (product / "Cargo.toml").write_text('[dependencies]\nxcsc={git="https://github.com/isarmg/xcsc.git",rev="' + 'a' * 40 + '",version="=0.5.0",features=["offline-maintenance"]}')
             with self.assertRaisesRegex(ConformanceError, "requires a resolved Cargo.lock"):
                 verify_source(product, ROOT)
@@ -129,7 +129,7 @@ class ClientPolicyTests(unittest.TestCase):
         manifest = VALID_MANIFEST + '\n[[components]]\nid="mobile"\nprofile="mobile-client"\ncapabilities=["mobile-queue", "mobile-state", "mobile-ffi", "https-delivery"]\n'
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            (product / "xcsc-client.toml").write_text(manifest)
+            (product / "ana-client.toml").write_text(manifest)
             cargo = product / "Cargo.toml"
             for dependency in [
                 '[dependencies]\nreqwest="0.13"\n',
@@ -147,7 +147,7 @@ class ClientPolicyTests(unittest.TestCase):
             product = Path(directory)
             (product / "src").mkdir()
             (product / "src" / "lib.rs").write_text("pub fn fixture() {}")
-            (product / "xcsc-client.toml").write_text(manifest)
+            (product / "ana-client.toml").write_text(manifest)
             (product / "Cargo.toml").write_text('[dependencies]\nreqwest="0.13"\n')
             verify_source(product, ROOT)
 
@@ -157,7 +157,7 @@ class ClientPolicyTests(unittest.TestCase):
             product = Path(directory)
             outside = product / "outside"
             outside.mkdir()
-            (product / "xcsc-client.toml").write_text(VALID_MANIFEST + component)
+            (product / "ana-client.toml").write_text(VALID_MANIFEST + component)
             (product / "linked").symlink_to(outside, target_is_directory=True)
             with self.assertRaisesRegex(ConformanceError, "source symlinks"):
                 verify_source(product, ROOT)
@@ -172,7 +172,7 @@ class ClientPolicyTests(unittest.TestCase):
         component = '\n[[components]]\nid="mobile"\nprofile="mobile-client"\ncapabilities=["mobile-queue", "mobile-state", "mobile-ffi", "https-delivery"]\n'
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            manifest = root / "xcsc-client.toml"
+            manifest = root / "ana-client.toml"
             manifest.write_text(VALID_MANIFEST + component.replace("mobile-client", "server-control-plane"))
             with self.assertRaisesRegex(ConformanceError, "unknown Profile"):
                 verify_manifest(root, ROOT)
@@ -185,7 +185,7 @@ class ClientPolicyTests(unittest.TestCase):
         component = '\n[[components]]\nid="cli"\nprofile="desktop-client"\ncapabilities=["https-delivery"]\n'
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            manifest = product / "xcsc-client.toml"
+            manifest = product / "ana-client.toml"
             for identifier in ("ana-server", "xczs", "xsos", "xscs", "xcos", "xocs"):
                 with self.subTest(server=identifier):
                     for profile in ("desktop-client", "offline-maintenance"):
@@ -202,7 +202,7 @@ class ClientPolicyTests(unittest.TestCase):
         requirement = 'xcsc={git="https://github.com/isarmg/xcsc.git",rev="' + 'a' * 40 + '",version="=0.5.0",features=["offline-maintenance"]}\n'
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            manifest = product / "xcsc-client.toml"
+            manifest = product / "ana-client.toml"
             cargo = product / "Cargo.toml"
             for identifier in ("xssi", "xssc"):
                 with self.subTest(tool=identifier):
@@ -241,7 +241,7 @@ class ClientPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory) / "product"
             product.mkdir()
-            (product / "xcsc-client.toml").write_text(VALID_MANIFEST.replace("fixture-product", "xssi") + component)
+            (product / "ana-client.toml").write_text(VALID_MANIFEST.replace("fixture-product", "xssi") + component)
             foundation = Path(directory) / "foundation"
             shutil.copytree(ROOT / "profiles", foundation / "profiles")
             profile = foundation / "profiles/offline-maintenance.toml"
@@ -257,7 +257,7 @@ class ClientPolicyTests(unittest.TestCase):
             product = Path(directory)
             for value in ['[]', '{}', 'true', '1']:
                 with self.subTest(value=value):
-                    (product / "xcsc-client.toml").write_text(VALID_MANIFEST + (
+                    (product / "ana-client.toml").write_text(VALID_MANIFEST + (
                         '\n[[components]]\nid="mobile"\nprofile=' + value +
                         '\ncapabilities=["mobile-queue", "mobile-state", "mobile-ffi", "https-delivery"]\n'
                     ))
@@ -268,7 +268,7 @@ class ClientPolicyTests(unittest.TestCase):
         component = '\n[[components]]\nid="client"\nprofile="desktop-client"\ncapabilities=["private-state", "bounded-spool", "https-delivery", "doctor", "local-web-management"]\n[components.client_limits]\nmax_record_bytes=1\nmax_spool_bytes=1\nmax_spool_entries=1\n'
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "xcsc-client.toml").write_text(
+            (root / "ana-client.toml").write_text(
                 VALID_MANIFEST.replace("fixture-product", "fixture-client-web").replace("0.5.0", "1.0.0") + component
             )
             source = root / "app.js"
@@ -289,7 +289,7 @@ max_spool_entries = 4096
 '''
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            path = product / "xcsc-client.toml"
+            path = product / "ana-client.toml"
             valid = VALID_MANIFEST + client
             path.write_text(valid, encoding="utf-8")
             verify_manifest(product, ROOT)
@@ -324,7 +324,7 @@ max_spool_entries = 4096
 '''
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            (product / "xcsc-client.toml").write_text(manifest, encoding="utf-8")
+            (product / "ana-client.toml").write_text(manifest, encoding="utf-8")
             source = product / "lib.rs"
             for text in [
                 "fn jitter(base: Duration) {}",
@@ -369,7 +369,7 @@ max_spool_entries = 4096
             product = root / "physical" / "product"
             product.mkdir(parents=True)
             (root / "alias").symlink_to(root / "physical", target_is_directory=True)
-            (product / "xcsc-client.toml").write_text(VALID_MANIFEST + component)
+            (product / "ana-client.toml").write_text(VALID_MANIFEST + component)
             (product / "ffi.rs").write_text("use std::panic::catch_unwind;")
             code = (
                 "from pathlib import Path; import sys; "
@@ -393,7 +393,7 @@ capabilities = ["mobile-queue", "mobile-state", "mobile-ffi", "https-delivery"]
 '''
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            (product / "xcsc-client.toml").write_text(manifest)
+            (product / "ana-client.toml").write_text(manifest)
             for suffix, text in [
                 ("rs", "struct HandleRegistry {}"),
                 ("rs", "fn read_c_string() {}"),
@@ -421,7 +421,7 @@ capabilities = ["mobile-queue", "mobile-state", "mobile-ffi", "https-delivery"]
 '''
         with tempfile.TemporaryDirectory() as directory:
             product = Path(directory)
-            (product / "xcsc-client.toml").write_text(manifest)
+            (product / "ana-client.toml").write_text(manifest)
             source = product / "lib.rs"
             for definition in [
                 "const MAX_TLS_INPUT_BYTES: usize = 999999999;",

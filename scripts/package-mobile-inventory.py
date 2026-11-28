@@ -55,7 +55,7 @@ def bindings(path,platform):
 
 def package(artifacts,output,platform,gradle_export=None):
     module=common();environment=module.clean_environment()
-    profile=tomllib.loads((ROOT/'xcsc-client.toml').read_text());product=profile['product_id']
+    profile=tomllib.loads((ROOT/'ana-client.toml').read_text());product=profile['product_id']
     if product != 'ana':raise ValueError('unknown mobile product')
     manifest=tomllib.loads((ROOT/'Cargo.toml').read_text())
     version=manifest['workspace']['package']['version']

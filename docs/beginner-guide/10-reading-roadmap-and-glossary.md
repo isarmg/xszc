@@ -4,7 +4,7 @@
 
 ### 契约与入口
 
-读工作区 manifest、`xcsc-client.toml`、客户端 constants、SQLite 结构定义与协议 Git 固定提交。画出
+读工作区 manifest、`ana-client.toml`、客户端 constants、SQLite 结构定义与本地协议 crate。画出
 发行版本、持久状态身份、FFI ABI 和 HTTP API 四类版本边界，并解释它们为什么不能互换。
 
 ### 上传与存储

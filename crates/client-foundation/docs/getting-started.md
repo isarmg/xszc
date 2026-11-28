@@ -10,7 +10,7 @@ Ana 的根 `Cargo.toml` 在 `[workspace.dependencies]` 中声明本地 `xcsc` �
 
 ## 2. 声明产品使用的能力
 
-在产品根目录创建 `xcsc-client.toml`。下面是只使用 HTTPS 投递适配器的最小桌面清单；将 `demo-client` 和 `src` 换成产品实际名称、源码目录。
+Ana 根目录的 `ana-client.toml` 声明移动端实际使用的能力。下面的独立示例展示一个只使用 HTTPS 投递适配器的桌面客户端清单。
 
 ```toml
 format = 1

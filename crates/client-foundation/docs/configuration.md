@@ -1,6 +1,6 @@
 # 配置能力
 
-xcsc 的配置在构建时完成：Cargo features 决定编译模块，`xcsc-client.toml` 声明产品使用的能力。用户的账户、服务器地址和业务偏好由产品管理。
+xcsc 的配置在构建时完成：Cargo features 决定编译模块，`ana-client.toml` 声明产品使用的能力。用户的账户、服务器地址和业务偏好由产品管理。
 
 ## 选择目标和功能
 
