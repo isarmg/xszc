@@ -14,6 +14,7 @@ import zipfile
 MAX_FILES = 16384
 MAX_BYTES = 2 * 1024 * 1024 * 1024
 MAX_JSON = 32 * 1024 * 1024
+MAX_RETAINED_BYTES = 256 * 1024 * 1024
 OUTPUT = 'share/release-sbom.cdx.json'
 # Checksum manifests must hash the SBOM. A SBOM cannot recursively hash itself
 # or that manifest; their own checksum/inventory provides this last edge.
@@ -106,6 +107,36 @@ def bounded(path, maximum):
         return b''.join(chunks)
     finally:
         os.close(descriptor)
+
+
+def retain(stage,path,contents):
+    """Publish an exact resource without replacing a link or existing data."""
+    stage=physical_directory(stage)
+    path=relative(path)
+    if not isinstance(contents,bytes) or len(contents)>MAX_RETAINED_BYTES:
+        raise ValueError('runtime build material exceeds its bound')
+    destination=stage/path
+    current=stage
+    for part in Path(path).parts[:-1]:
+        current/=part
+        try:current.mkdir(mode=0o755)
+        except FileExistsError:pass
+        info=current.lstat()
+        if not stat.S_ISDIR(info.st_mode) or getattr(info,'st_file_attributes',0)&0x400:
+            raise ValueError('runtime build material requires physical directories')
+    try:
+        descriptor=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_NOFOLLOW',0)|getattr(os,'O_BINARY',0),0o600)
+    except FileExistsError:
+        if bounded(destination,MAX_RETAINED_BYTES)!=contents:
+            raise ValueError('runtime build material conflicts with an existing delivered resource')
+        return destination
+    with os.fdopen(descriptor,'wb') as output:
+        output.write(contents)
+        output.flush()
+        os.fsync(output.fileno())
+        if os.name=='nt':os.chmod(destination,0o644)
+        else:os.fchmod(output.fileno(),0o644)
+    return destination
 
 
 def digest(path):

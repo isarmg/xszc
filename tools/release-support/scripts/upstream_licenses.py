@@ -7,7 +7,6 @@ import sys
 import urllib.request
 from urllib.parse import urlsplit
 
-from frontend_receipt import retain
 import release_sbom as authority
 
 ROOT = Path(__file__).resolve().parent
@@ -207,8 +206,8 @@ def prepare(source_root, metadata, selected_ids, environment):
     output.mkdir(mode=0o700)
     _directory(output)
     for path, contents in sorted(material.items()):
-        retain(output, path, contents)
-    retain(output, 'receipt.json', (json.dumps({'format_version': 1, 'packages': receipts}, sort_keys=True, indent=2) + '\n').encode())
+        authority.retain(output, path, contents)
+    authority.retain(output, 'receipt.json', (json.dumps({'format_version': 1, 'packages': receipts}, sort_keys=True, indent=2) + '\n').encode())
 
 
 if __name__ == '__main__':
