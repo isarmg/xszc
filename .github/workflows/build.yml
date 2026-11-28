@@ -199,9 +199,6 @@ jobs:
           if test -f "$RUNNER_TEMP/ana-simulator-boot.log"; then
             cp "$RUNNER_TEMP/ana-simulator-boot.log" dist/ios-ui/simulator-boot.log
           fi
-          if test -f "$RUNNER_TEMP/ana-ios-live.log"; then
-            cp "$RUNNER_TEMP/ana-ios-live.log" dist/ios-ui/gallery-live.log
-          fi
           runner_data="$(xcrun simctl get_app_container "$ANA_TEST_SIMULATOR" org.sarmg.ana.uitests.xctrunner data 2>/dev/null || true)"
           if test -n "$runner_data"; then
             find "$runner_data/Documents" -name '*.png' -exec cp {} dist/ios-ui/ \;

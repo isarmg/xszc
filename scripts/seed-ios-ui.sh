@@ -26,14 +26,20 @@ import struct, sys, zlib
 root = Path(sys.argv[1])
 def chunk(kind, data):
     return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
-for index in range(1, 9):
-    color = [(62, 126, 160), (196, 139, 74), (86, 143, 112)][(index - 1) % 3]
+
+def write_photo(name, color):
     rows = b''.join(b'\0' + bytes(min(255, c + y // 5) for _ in range(320) for c in color) for y in range(240))
     png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 320, 240, 8, 2, 0, 0, 0))
     png += chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b'')
-    (root / f'layout-photo-{index}.png').write_bytes(png)
+    (root / name).write_bytes(png)
+
+colors = [(62, 126, 160), (196, 139, 74), (86, 143, 112)]
+for index in range(1, 9):
+    write_photo(f'layout-photo-{index}.png', colors[(index - 1) % len(colors)])
 for index in range(1, 302):
     (root / f'gallery-page-{index:03}.png').write_bytes((root / 'layout-photo-1.png').read_bytes())
+# The UI test harness imports this distinct photo after observing the seeded library.
+write_photo('layout-auto-refresh.png', (156, 87, 132))
 PY
 if ! xcrun simctl list devices booted -j | python3 -c 'import json,sys; target=sys.argv[1]; sys.exit(not any(d["udid"] == target for devices in json.load(sys.stdin)["devices"].values() for d in devices))' "$simulator_udid"; then
   timed_phase boot xcrun simctl boot "$simulator_udid"

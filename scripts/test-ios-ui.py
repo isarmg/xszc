@@ -3,7 +3,6 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import time
@@ -18,7 +17,6 @@ def main():
     simulator, result_bundle = sys.argv[1:]
     fixture_dir = Path(os.environ["RUNNER_TEMP"]) / "ana-layout-photos"
     refreshed_photo = fixture_dir / "layout-auto-refresh.png"
-    shutil.copyfile(fixture_dir / "layout-photo-1.png", refreshed_photo)
     command = [
         "xcodebuild", "-project", "clients/ios/Ana.xcodeproj",
         "-scheme", "Ana", "-sdk", "iphonesimulator",
@@ -27,20 +25,7 @@ def main():
         "-only-testing:AnaUITests", "-resultBundlePath", result_bundle,
         "-collect-test-diagnostics", "never", "-parallel-testing-enabled", "NO", "test-without-building",
     ]
-    live_path = Path(os.environ["RUNNER_TEMP"]) / "ana-ios-live.log"
-    with live_path.open("w") as live_output, subprocess.Popen([
-        "xcrun", "simctl", "spawn", simulator, "log", "stream", "--level", "debug",
-        "--style", "compact", "--predicate", 'subsystem == "org.sarmg.ana"',
-    ], stdout=live_output, stderr=subprocess.STDOUT) as live:
-        try:
-            return run_tests(command, simulator, refreshed_photo)
-        finally:
-            live.terminate()
-            try:
-                live.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                live.kill()
-                live.wait()
+    return run_tests(command, simulator, refreshed_photo)
 
 
 def run_tests(command, simulator, refreshed_photo):
@@ -52,6 +37,8 @@ def run_tests(command, simulator, refreshed_photo):
             started = time.monotonic()
             print("iOS live photo import started", flush=True)
             try:
+                # Keep the live fixture newer than the initial gallery files.
+                os.utime(refreshed_photo)
                 subprocess.run(["xcrun", "simctl", "addmedia", simulator,
                                 str(refreshed_photo)], check=True, timeout=PHOTO_IMPORT_TIMEOUT)
                 print(f"iOS live photo import finished after {time.monotonic() - started:.3f}s", flush=True)

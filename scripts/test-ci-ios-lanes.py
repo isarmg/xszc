@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Exercise slice builds, the exact aggregate shell, and full test wiring."""
 import itertools
-import importlib.util
 import sys
 import os
 from pathlib import Path
@@ -10,7 +9,6 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = (ROOT / '.github/workflows/build.yml').read_text()
@@ -155,66 +153,43 @@ if args[:2] == ['simctl', 'addmedia'] and any('gallery-page-' in arg for arg in 
 
 
 class LivePhotoImportTests(unittest.TestCase):
-    def test_single_import_uses_half_observer_deadline_and_timeout_still_fails(self):
-        spec = importlib.util.spec_from_file_location('ui_deadline', ROOT / 'scripts/test-ios-ui.py')
-        ui = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(ui)
-        navigation = (ROOT / 'clients/ios/AnaUITests/NavigationTests.swift').read_text()
-        observer = navigation.split('func testGalleryAutoRefreshesAfterSystemPhotoLibraryChanges()', 1)[1].split('func testSettingsSwitches', 1)[0]
-        self.assertIn('waitForExistence(timeout: 240)', observer)
-        self.assertEqual(ui.PHOTO_IMPORT_TIMEOUT, 120)
-        for timeout in (False, True):
-            with self.subTest(timeout=timeout):
-                process = mock.MagicMock()
-                process.__enter__.return_value = process
-                process.stdout = ['ANA_UI_READY_FOR_PHOTO_CHANGE\n'] * 2 + ['still draining XCTest\n']
-                process.wait.return_value = 0
-                failure = subprocess.TimeoutExpired('fixture import', 120) if timeout else None
-                with mock.patch.object(ui.subprocess, 'Popen', return_value=process), \
-                     mock.patch.object(ui.subprocess, 'run', side_effect=failure) as imported, \
-                     mock.patch('builtins.print') as printed:
-                    if timeout:
-                        with self.assertRaises(subprocess.TimeoutExpired):
-                            ui.run_tests(['test-runner'], 'test-device', Path('fixture.png'))
-                    else:
-                        self.assertEqual(ui.run_tests(['test-runner'], 'test-device', Path('fixture.png')), 0)
-                    imported.assert_called_once_with(
-                        ['xcrun', 'simctl', 'addmedia', 'test-device', 'fixture.png'],
-                        check=True, timeout=120)
-                    printed.assert_any_call('still draining XCTest\n', end='', flush=True)
-                    messages = [call.args[0] for call in printed.call_args_list]
-                    self.assertTrue(any(('failed after' if timeout else 'finished after') in line for line in messages))
-                    if timeout:
-                        process.terminate.assert_called()
-                    else:
-                        process.terminate.assert_not_called()
-
-    def test_real_runner_logs_import_success_and_failure_without_changing_tests(self):
-        for status in (0, 7):
-            with self.subTest(status=status), tempfile.TemporaryDirectory() as temporary:
+    def test_runner_imports_once_and_stops_xctest_on_a_failed_import(self):
+        actions = {'success': 'exit 0', 'failure': 'exit 7', 'timeout': 'exec sleep 30'}
+        for outcome, action in actions.items():
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)
+                (root / 'fixture.png').touch()
                 xcrun = root / 'xcrun'
-                xcrun.write_text('#!/bin/sh\nprintf "%s\\n" "$*" > "$IMPORT_ARGS"\nexit ' + str(status) + '\n')
+                xcrun.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$IMPORT_ARGS"\n' + action + '\n')
                 xcrun.chmod(0o755)
                 # Exercise run_tests itself with a child producer and real pipe;
                 # substitute only the unavailable simulator command.
                 producer = root / 'producer.py'
-                producer.write_text('import time\nprint("ANA_UI_READY_FOR_PHOTO_CHANGE", flush=True)\ntime.sleep(0.2)\n')
+                producer_output = 'ANA_UI_READY_FOR_PHOTO_CHANGE\n' * 2 + 'still draining XCTest'
+                producer_lifetime = 0.2 if outcome == 'success' else 30
+                producer.write_text(
+                    f'import time\nprint({producer_output!r}, flush=True)\ntime.sleep({producer_lifetime})\n')
                 driver = root / 'driver.py'
+                timeout_override = 'ui.PHOTO_IMPORT_TIMEOUT = 0.5\n' if outcome == 'timeout' else ''
                 driver.write_text(
                     'import importlib.util, pathlib, sys\n'
                     'spec = importlib.util.spec_from_file_location("ui", ' + repr(str(ROOT / 'scripts/test-ios-ui.py')) + ')\n'
                     'ui = importlib.util.module_from_spec(spec); spec.loader.exec_module(ui)\n'
+                    f'{timeout_override}'
                     'sys.exit(ui.run_tests([sys.executable, ' + repr(str(producer)) + '], "test-device", pathlib.Path("fixture.png")))\n')
                 env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
                            IMPORT_ARGS=str(root / 'args'))
-                result = subprocess.run([sys.executable, str(driver)], env=env,
+                result = subprocess.run([sys.executable, str(driver)], env=env, cwd=root,
                                         capture_output=True, text=True, timeout=5)
-                self.assertEqual(result.returncode == 0, status == 0)
+                self.assertEqual(result.returncode == 0, outcome == 'success')
                 self.assertEqual((root / 'args').read_text().strip(),
                                  'simctl addmedia test-device fixture.png')
+                self.assertIn('still draining XCTest', result.stdout)
                 self.assertIn('iOS live photo import started', result.stdout)
-                self.assertIn('iOS live photo import ' + ('finished' if status == 0 else 'failed') + ' after', result.stdout)
+                result_message = 'finished' if outcome == 'success' else 'failed'
+                self.assertIn(f'iOS live photo import {result_message} after', result.stdout)
+                if outcome == 'timeout':
+                    self.assertIn('subprocess.TimeoutExpired', result.stderr)
 
 
 class WorkflowTests(unittest.TestCase):
